@@ -1,0 +1,45 @@
+﻿node_modules
+dist
+out
+release
+*.log
+.DS_Store
+server/node_modules
+.env.local
+*.local
+dist-mobile
+.capacitor
+
+# Android signing (never commit)
+*.jks
+*.keystore
+keystore.properties
+android/keystore.properties
+
+# Built packages
+*.apk
+*.aab
+
+# Android build / local SDK
+android/.gradle
+android/app/build
+android/build
+android/local.properties
+android/captures
+android/.idea
+*.iml
+
+# iOS
+ios/App/Pods
+ios/DerivedData
+ios/App/App/public
+
+# Local scratch
+tmp-*
+_patch_player.py
+
+# Server secrets/deps
+server/.env
+server/node_modules
+server/_api_restart*
+

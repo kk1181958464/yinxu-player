@@ -1,0 +1,24 @@
+appId: com.gina.kugou-player
+productName: 音序
+directories:
+  output: release
+files:
+  - out/**/*
+extraResources:
+  - from: server
+    to: server
+    filter:
+      - "**/*"
+      - "!**/.git/**"
+      - "!**/*.log"
+  - from: resources
+    to: resources
+    filter:
+      - "**/*"
+win:
+  target:
+    - nsis
+  icon: resources/icon.ico
+nsis:
+  shortcutName: 音序
+artifactName: ${productName}-${version}-setup.${ext}

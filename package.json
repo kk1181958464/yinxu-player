@@ -1,0 +1,52 @@
+{
+  "name": "kugou-player",
+  "version": "0.1.0",
+  "description": "Apple Music style third-party music player",
+  "main": "./out/main/index.js",
+  "author": "Gina",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "server": "node server/app.js",
+    "dev:mobile": "vite --config vite.config.ts",
+    "build:mobile": "vite build --config vite.config.ts",
+    "preview:mobile": "vite preview --config vite.config.ts",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "server:lan": "node server/start-lan.js"
+  },
+  "dependencies": {
+    "@capacitor/app": "^6",
+    "@capacitor/core": "^6",
+    "@capacitor/keyboard": "^6",
+    "@capacitor/status-bar": "^6",
+    "@phosphor-icons/vue": "^2.2.1",
+    "axios": "^1.7.9",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6",
+    "@capacitor/cli": "^6",
+    "@capacitor/ios": "^6",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vue-tsc": "^2.1.10",
+    "ws": "^8.22.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  }
+}

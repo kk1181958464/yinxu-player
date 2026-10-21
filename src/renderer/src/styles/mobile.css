@@ -1,0 +1,1029 @@
+/* ============================================================
+   手机 / Capacitor 布局层
+   ------------------------------------------------------------
+   只在 html.mobile-layout 下生效：
+   - Capacitor 原生端始终手机布局
+   - 普通浏览器窄屏（<=768px）手机布局
+   - Electron 桌面端保持原布局
+   ============================================================ */
+
+.mobile-topbar,
+.mobile-player,
+.mobile-tabbar {
+  display: none;
+}
+
+
+/* 去掉 Android WebView 点击按钮时的方块焦点/高亮 */
+html.mobile-layout,
+html.mobile-layout * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout button:focus,
+html.mobile-layout button:focus-visible,
+html.mobile-layout a:focus,
+html.mobile-layout a:focus-visible,
+html.mobile-layout [role="button"]:focus,
+html.mobile-layout [role="button"]:focus-visible,
+html.mobile-layout .icon-btn:focus,
+html.mobile-layout .icon-btn:focus-visible,
+html.mobile-layout .media-card:focus,
+html.mobile-layout .media-card:focus-visible,
+html.mobile-layout .track-row:focus,
+html.mobile-layout .track-row:focus-visible,
+html.mobile-layout .mobile-tab:focus,
+html.mobile-layout .mobile-tab:focus-visible,
+html.mobile-layout .mobile-player-btn:focus,
+html.mobile-layout .mobile-player-btn:focus-visible,
+html.mobile-layout .play-btn:focus,
+html.mobile-layout .play-btn:focus-visible {
+  outline: none !important;
+  box-shadow: none;
+}
+
+html.mobile-layout {
+  --mobile-top-h: 48px;
+  --mobile-tab-h: 56px;
+  --mobile-player-h: 64px;
+  --titlebar-h: 0px;
+  --player-h: 64px;
+  height: 100%;
+  overflow: hidden;
+}
+
+html.mobile-layout body,
+html.mobile-layout #app {
+  height: 100%;
+  overflow: hidden;
+}
+
+html.mobile-layout .app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  background:
+    radial-gradient(120% 60% at 20% -10%, rgba(250, 45, 72, 0.08), transparent 62%),
+    var(--bg-shell);
+}
+
+html.mobile-layout .titlebar,
+html.mobile-layout .sidebar,
+html.mobile-layout .player-bar,
+html.mobile-layout .login-chrome {
+  display: none !important;
+}
+
+html.mobile-layout .content {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ---------- 顶部栏 ---------- */
+
+html.mobile-layout .mobile-topbar {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: calc(var(--mobile-top-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 14px 0;
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(10, 10, 12, 0.88);
+  backdrop-filter: blur(24px) saturate(150%);
+}
+
+html.mobile-layout .mobile-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+html.mobile-layout .mobile-brand-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+html.mobile-layout .mobile-brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+html.mobile-layout .mobile-topbar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+html.mobile-layout .mobile-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+html.mobile-layout .mobile-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--text-2);
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease),
+    transform 0.12s var(--ease);
+}
+
+html.mobile-layout .mobile-icon-btn:active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  transform: scale(0.94);
+}
+
+html.mobile-layout .mobile-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 2px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #3a3a40, #242428);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  flex: none;
+}
+
+html.mobile-layout .mobile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- 页面基础 ---------- */
+
+html.mobile-layout .page {
+  width: 100%;
+  max-width: none;
+  padding: 16px 16px 30px;
+}
+
+html.mobile-layout .page-head {
+  margin-bottom: 18px;
+}
+
+html.mobile-layout .page-title {
+  font-size: 27px;
+  letter-spacing: -0.025em;
+}
+
+html.mobile-layout .page-sub {
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+html.mobile-layout .section {
+  margin-top: 24px;
+}
+
+html.mobile-layout .section-head {
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+html.mobile-layout .section-head h2 {
+  font-size: 17px;
+}
+
+html.mobile-layout .section-meta {
+  font-size: 11px;
+}
+
+html.mobile-layout .text-btn {
+  font-size: 11.5px;
+}
+
+html.mobile-layout .state-panel {
+  padding: 40px 18px;
+  border-radius: 14px;
+}
+
+html.mobile-layout .state-panel h2 {
+  font-size: 15px;
+}
+
+html.mobile-layout .state-panel p {
+  font-size: 12px;
+}
+
+/* ---------- 首页 Hero ---------- */
+
+html.mobile-layout .hero {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  min-height: 0;
+  padding: 14px;
+  border-radius: 14px;
+}
+
+html.mobile-layout .hero-bg {
+  filter: blur(40px) saturate(165%) brightness(0.62);
+}
+
+html.mobile-layout .hero-cover {
+  width: 104px;
+  height: 104px;
+  border-radius: 8px;
+}
+
+html.mobile-layout .hero-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+html.mobile-layout .hero-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+html.mobile-layout .hero-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  margin: 6px 0 4px;
+  font-size: 21px;
+  line-height: 1.16;
+}
+
+html.mobile-layout .hero-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+html.mobile-layout .hero-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+html.mobile-layout .hero-actions .btn {
+  height: 30px;
+  padding: 0 12px;
+  gap: 5px;
+  font-size: 11.5px;
+}
+
+html.mobile-layout .hero-actions .btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---------- 横向卡片架 ---------- */
+
+html.mobile-layout .shelf {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 132px;
+  grid-template-columns: none;
+  gap: 12px;
+  margin: 0 -16px 0 0;
+  padding: 2px 16px 6px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+html.mobile-layout .shelf::-webkit-scrollbar {
+  display: none;
+}
+
+html.mobile-layout .media-card {
+  gap: 6px;
+  scroll-snap-align: start;
+}
+
+html.mobile-layout .media-art {
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.26);
+}
+
+html.mobile-layout .media-title {
+  font-size: 12.5px;
+}
+
+html.mobile-layout .media-sub {
+  font-size: 11px;
+}
+
+html.mobile-layout .media-play {
+  opacity: 0;
+  transform: none;
+}
+
+html.mobile-layout .media-card:active .media-art .cover {
+  transform: scale(0.98);
+}
+
+/* ---------- 歌曲列表 ---------- */
+
+html.mobile-layout .track-head,
+html.mobile-layout .track-row {
+  grid-template-columns: 26px minmax(0, 1fr) 44px;
+  gap: 8px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+html.mobile-layout .track-head {
+  padding-bottom: 6px;
+  font-size: 10.5px;
+}
+
+html.mobile-layout .track-list {
+  padding-top: 2px;
+}
+
+html.mobile-layout .track-row {
+  height: 54px;
+}
+
+html.mobile-layout .track-art {
+  width: 38px;
+  height: 38px;
+}
+
+html.mobile-layout .track-name {
+  font-size: 12.5px;
+}
+
+html.mobile-layout .track-artist {
+  font-size: 11px;
+}
+
+html.mobile-layout .track-col-time {
+  font-size: 11px;
+}
+
+html.mobile-layout .track-play {
+  display: none;
+}
+
+html.mobile-layout .track-row:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html.mobile-layout .track-row:hover .track-index {
+  opacity: 1;
+}
+
+/* ---------- 搜索 ---------- */
+
+html.mobile-layout .search-field {
+  height: 44px;
+  margin-bottom: 18px;
+  padding: 0 12px;
+  border-radius: 10px;
+}
+
+html.mobile-layout .search-field input {
+  font-size: 14px;
+}
+
+html.mobile-layout .search-recent {
+  margin-top: 2px;
+}
+
+html.mobile-layout .search-chip {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+/* ---------- 歌单页 ---------- */
+
+html.mobile-layout .page-ambient {
+  top: 0;
+  right: -16px;
+  left: -16px;
+  height: 280px;
+}
+
+html.mobile-layout .playlist-hero {
+  align-items: center;
+  gap: 14px;
+  padding: 2px 0 18px;
+}
+
+html.mobile-layout .playlist-cover {
+  width: 112px;
+  height: 112px;
+  border-radius: 8px;
+}
+
+html.mobile-layout .playlist-info {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+html.mobile-layout .playlist-eyebrow {
+  font-size: 10px;
+}
+
+html.mobile-layout .playlist-name {
+  margin: 6px 0 5px;
+  font-size: 24px;
+}
+
+html.mobile-layout .playlist-meta {
+  font-size: 11.5px;
+}
+
+html.mobile-layout .playlist-hero .hero-actions {
+  margin-top: 9px;
+}
+
+/* ---------- 资料库 ---------- */
+
+html.mobile-layout .profile-head {
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 2px 0 20px;
+}
+
+html.mobile-layout .profile-avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 24px;
+}
+
+html.mobile-layout .profile-name {
+  font-size: 24px;
+}
+
+html.mobile-layout .profile-meta {
+  gap: 8px;
+  margin-top: 5px;
+}
+
+html.mobile-layout .profile-actions {
+  width: 100%;
+  justify-content: flex-start;
+  margin-left: 0;
+}
+
+html.mobile-layout .profile-actions .btn {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+html.mobile-layout .playlist-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 12px;
+}
+
+html.mobile-layout .legal {
+  margin-top: 30px;
+  padding-top: 16px;
+  font-size: 11px;
+  line-height: 1.75;
+}
+
+/* ---------- 会员页（仅适配尺寸，不改逻辑） ---------- */
+
+html.mobile-layout .vip-status-grid {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+html.mobile-layout .vip-card {
+  padding: 14px;
+}
+
+html.mobile-layout .vip-card-state {
+  font-size: 20px;
+}
+
+html.mobile-layout .vip-toolbar {
+  gap: 8px;
+}
+
+html.mobile-layout .vip-rows {
+  border-radius: 14px;
+}
+
+html.mobile-layout .vip-row {
+  gap: 10px;
+  padding: 12px;
+}
+
+html.mobile-layout .vip-date-input {
+  width: 132px;
+}
+
+html.mobile-layout .vip-range {
+  gap: 8px;
+}
+
+html.mobile-layout .vip-history-item {
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  font-size: 11.5px;
+}
+
+html.mobile-layout .vip-history-time,
+html.mobile-layout .vip-history-msg {
+  grid-column: 2;
+}
+
+/* ---------- 底部导航 ---------- */
+
+html.mobile-layout .mobile-tabbar {
+  position: relative;
+  z-index: 45;
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(4, 1fr);
+  height: calc(var(--mobile-tab-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--hairline);
+  background: rgba(10, 10, 12, 0.94);
+  backdrop-filter: blur(24px) saturate(150%);
+}
+
+html.mobile-layout .mobile-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout .mobile-tab svg {
+  width: 21px;
+  height: 21px;
+}
+
+html.mobile-layout .mobile-tab.active {
+  color: var(--accent);
+}
+
+html.mobile-layout .mobile-tab:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ---------- 迷你播放器 ---------- */
+
+html.mobile-layout .mobile-player {
+  position: relative;
+  z-index: 35;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: var(--mobile-player-h);
+  padding: 0 12px;
+  border-top: 1px solid var(--hairline);
+  background: rgba(16, 16, 18, 0.94);
+  backdrop-filter: blur(30px) saturate(150%);
+}
+
+html.mobile-layout .mobile-player-progress {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+html.mobile-layout .mobile-player-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+
+html.mobile-layout .mobile-player-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout .mobile-player-cover {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+}
+
+html.mobile-layout .mobile-player-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+html.mobile-layout .mobile-player-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+html.mobile-layout .mobile-player-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+
+html.mobile-layout .mobile-player-sub.is-error {
+  color: #ff9aa4;
+}
+
+html.mobile-layout .mobile-player-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 44px;
+  border-radius: 8px;
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout .mobile-player-btn:active {
+  transform: scale(0.94);
+}
+
+html.mobile-layout .mobile-player-toggle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--text);
+  color: #111;
+}
+
+html.mobile-layout .mobile-player-toggle:disabled {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- 正在播放全屏页 ---------- */
+
+html.mobile-layout .player-sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #0a0a0c;
+}
+
+html.mobile-layout .player-sheet {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: calc(12px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 0;
+  background:
+    radial-gradient(120% 55% at 50% 0%, #25252f 0%, rgba(18, 18, 23, 0) 62%),
+    linear-gradient(180deg, #141418 0%, #0b0b0e 58%, #08080a 100%);
+}
+
+html.mobile-layout .player-sheet-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+html.mobile-layout .player-sheet-head .icon-btn {
+  width: 38px;
+  height: 38px;
+}
+
+html.mobile-layout .player-sheet-art {
+  flex: none;
+  width: min(72vw, 300px);
+  height: min(72vw, 300px);
+  margin: clamp(24px, 6vh, 56px) auto 0;
+}
+
+html.mobile-layout .player-sheet-art .cover {
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.55);
+}
+
+html.mobile-layout .player-sheet-meta {
+  flex: none;
+  margin-top: 22px;
+  text-align: center;
+}
+
+html.mobile-layout .player-sheet-meta h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+html.mobile-layout .player-sheet-meta p {
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+html.mobile-layout .player-sheet-error {
+  margin-top: 12px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: #ff9aa4;
+}
+
+html.mobile-layout .player-sheet-progress {
+  flex: none;
+  margin-top: auto;
+  padding-top: clamp(28px, 7vh, 64px);
+}
+
+html.mobile-layout .player-sheet-progress .slider {
+  height: 20px;
+}
+
+html.mobile-layout .player-sheet-progress .slider::-webkit-slider-runnable-track {
+  height: 4px;
+}
+
+html.mobile-layout .player-sheet-progress .slider::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  opacity: 1;
+}
+
+html.mobile-layout .player-sheet-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+html.mobile-layout .player-sheet-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-bottom: 4px;
+}
+
+html.mobile-layout .player-sheet-controls .icon-btn {
+  width: 38px;
+  height: 38px;
+}
+
+html.mobile-layout .sheet-skip {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: var(--text);
+}
+
+html.mobile-layout .sheet-play {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--text);
+  color: #111;
+  transition: transform 0.12s var(--ease);
+}
+
+html.mobile-layout .sheet-play:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+html.mobile-layout .sheet-play:disabled {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(0, 0, 0, 0.4);
+}
+
+html.mobile-layout .sheet-enter-active,
+html.mobile-layout .sheet-leave-active {
+  transition: opacity 0.2s var(--ease);
+}
+
+html.mobile-layout .sheet-enter-from,
+html.mobile-layout .sheet-leave-to {
+  opacity: 0;
+}
+
+html.mobile-layout .sheet-enter-active .player-sheet,
+html.mobile-layout .sheet-leave-active .player-sheet {
+  transition: transform 0.26s var(--ease);
+}
+
+html.mobile-layout .sheet-enter-from .player-sheet,
+html.mobile-layout .sheet-leave-to .player-sheet {
+  transform: translateY(4%);
+}
+
+/* ---------- 登录 ---------- */
+
+html.mobile-layout .login-screen {
+  height: 100dvh;
+}
+
+html.mobile-layout .login-main {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  gap: 20px;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  padding: 22px 16px calc(26px + env(safe-area-inset-bottom));
+}
+
+html.mobile-layout .login-brand {
+  min-width: 0;
+  max-width: 100%;
+  animation: none;
+}
+
+html.mobile-layout .login-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 20px;
+  border-radius: 16px;
+  animation: none;
+}
+
+html.mobile-layout .login-form,
+html.mobile-layout .field,
+html.mobile-layout .field-inline,
+html.mobile-layout .segmented,
+html.mobile-layout .login-panel-head {
+  min-width: 0;
+}
+
+html.mobile-layout .login-title,
+html.mobile-layout .login-lead,
+html.mobile-layout .login-legal {
+  overflow-wrap: anywhere;
+}
+
+html.mobile-layout .login-appicon {
+  width: 38px;
+  height: 38px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+}
+
+html.mobile-layout .login-kicker {
+  margin-bottom: 8px;
+  font-size: 10.5px;
+}
+
+html.mobile-layout .login-title {
+  font-size: 30px;
+  line-height: 1.08;
+}
+
+html.mobile-layout .login-lead {
+  max-width: none;
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+html.mobile-layout .login-points,
+html.mobile-layout .login-footnote {
+  display: none;
+}
+
+html.mobile-layout .login-panel-head h2 {
+  font-size: 19px;
+}
+
+html.mobile-layout .login-panel-head p {
+  margin-top: 4px;
+}
+
+html.mobile-layout .segmented {
+  margin: 14px 0;
+}
+
+html.mobile-layout .field input {
+  height: 44px;
+  font-size: 14px;
+}
+
+html.mobile-layout .login-form {
+  gap: 12px;
+}
+
+html.mobile-layout .login-form .btn-block {
+  height: 44px;
+}
+
+html.mobile-layout .login-legal {
+  margin-top: 14px;
+  padding-top: 12px;
+  font-size: 10px;
+}
+
+html.mobile-layout .qr-frame {
+  width: 176px;
+  height: 176px;
+}
+
+/* ---------- 提示 / 启动 ---------- */
+
+html.mobile-layout .app-toast {
+  position: fixed;
+  top: calc(var(--mobile-top-h) + env(safe-area-inset-top) + 10px);
+  right: 12px;
+  left: 12px;
+  z-index: 90;
+  max-width: none;
+}
+
+html.mobile-layout .boot-screen {
+  height: 100dvh;
+  padding: 24px;
+}
+
+html.mobile-layout .boot-screen-error {
+  overflow-y: auto;
+}
