@@ -1,6 +1,6 @@
 {
   "name": "kugou-player",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Apple Music style third-party music player",
   "main": "./out/main/index.js",
   "author": "Gina",

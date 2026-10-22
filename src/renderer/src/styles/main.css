@@ -2353,33 +2353,6 @@ button.now-playing:not(:disabled):hover .np-title {
   color: #ff9aa4;
 }
 
-.now-page-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-top: 22px;
-}
-
-.now-page-play {
-  display: grid;
-  place-items: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background: var(--text);
-  color: #111;
-  transition: transform 0.12s var(--ease);
-}
-
-.now-page-play:active:not(:disabled) {
-  transform: scale(0.94);
-}
-
-.now-page-play:disabled {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(0, 0, 0, 0.4);
-}
-
 .now-page-lyrics-wrap {
   display: flex;
   flex-direction: column;

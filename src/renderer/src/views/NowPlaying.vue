@@ -2,11 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  PhCaretLeft,
-  PhPause,
-  PhPlay,
-  PhSkipBack,
-  PhSkipForward
+  PhCaretLeft
 } from '@phosphor-icons/vue'
 import CoverArt from '../components/CoverArt.vue'
 import { usePlayerStore } from '../stores/player'
@@ -139,40 +135,6 @@ onBeforeUnmount(() => {
         <h1>{{ player.title }}</h1>
         <p class="now-page-artist">{{ player.artist }}</p>
         <div v-if="player.error" class="now-page-error">{{ player.error }}</div>
-
-        <div class="now-page-actions">
-          <button
-            class="icon-btn"
-            type="button"
-            title="上一首"
-            aria-label="上一首"
-            :disabled="!player.hasQueue"
-            @click="player.prev()"
-          >
-            <PhSkipBack :size="22" weight="fill" />
-          </button>
-          <button
-            class="now-page-play"
-            type="button"
-            :title="player.playing ? '暂停' : '播放'"
-            :aria-label="player.playing ? '暂停' : '播放'"
-            :disabled="!player.hasQueue"
-            @click="player.toggle()"
-          >
-            <PhPause v-if="player.playing" :size="24" weight="fill" />
-            <PhPlay v-else :size="24" weight="fill" />
-          </button>
-          <button
-            class="icon-btn"
-            type="button"
-            title="下一首"
-            aria-label="下一首"
-            :disabled="!player.hasQueue"
-            @click="player.next()"
-          >
-            <PhSkipForward :size="22" weight="fill" />
-          </button>
-        </div>
       </aside>
 
       <section class="now-page-lyrics-wrap" aria-label="歌词">
