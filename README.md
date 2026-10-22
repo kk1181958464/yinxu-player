@@ -7,11 +7,13 @@ Apple Music 风格的非官方第三方播放器（Electron 桌面 + Capacitor �
 
 > 截图为开发环境演示，账号与歌单为测试数据。
 
-![登录](docs/ui-preview/login.png)
-
 ![首页](docs/ui-preview/home.png)
 
 ![搜索](docs/ui-preview/search.png)
+
+![歌单](docs/ui-preview/playlist.png)
+
+![正在播放](docs/ui-preview/now-playing.png)
 
 ## 环境
 
