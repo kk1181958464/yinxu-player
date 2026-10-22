@@ -11,7 +11,15 @@ export type NativeAudioError = {
 }
 
 export interface NativeAudioPlugin {
-  play(options: { url: string; volume?: number; muted?: boolean }): Promise<void>
+  play(options: {
+    url: string
+    volume?: number
+    muted?: boolean
+    title?: string
+    artist?: string
+    cover?: string
+    duration?: number
+  }): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
   stop(): Promise<void>
@@ -19,8 +27,11 @@ export interface NativeAudioPlugin {
   setVolume(options: { volume: number; muted?: boolean }): Promise<void>
   getStatus(): Promise<NativeAudioStatus>
   addListener(
-    eventName: 'timeupdate' | 'playing' | 'ended' | 'error',
-    listenerFunc: (event: NativeAudioStatus & NativeAudioError) => void
+    eventName: 'timeupdate' | 'playing' | 'ended' | 'error' | 'mediaControl',
+    listenerFunc: (
+      event: NativeAudioStatus &
+        NativeAudioError & { action?: string; position?: number }
+    ) => void
   ): Promise<PluginListenerHandle>
 }
 

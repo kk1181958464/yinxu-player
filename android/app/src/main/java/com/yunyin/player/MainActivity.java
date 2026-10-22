@@ -1,5 +1,8 @@
 package com.yunyin.player;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -23,6 +26,13 @@ public class MainActivity extends BridgeActivity {
                 settings.setAllowContentAccess(true);
                 webView.setKeepScreenOn(true);
             }
+        }
+
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 4102);
         }
     }
 }

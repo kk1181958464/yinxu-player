@@ -180,6 +180,7 @@ function getClient(): AxiosInstance {
 
 export interface SongItem {
   hash: string
+  hq_hash?: string
   album_id?: string | number
   album_audio_id?: string | number
   songname?: string
@@ -233,6 +234,7 @@ export function normalizeSong(raw: Record<string, unknown>): SongItem {
   const hash = String(
     raw.hash || raw.FileHash || raw.hash_128 || raw.HQFileHash || ''
   )
+  const hqHash = String(raw.HQFileHash || raw.hqhash || raw.hq_file_hash || '')
 
   const singerList = Array.isArray(raw.singerinfo)
     ? (raw.singerinfo as Array<{ name?: unknown }>)
@@ -265,8 +267,11 @@ export function normalizeSong(raw: Record<string, unknown>): SongItem {
   return {
     ...raw,
     hash,
+    hq_hash: hqHash || undefined,
     album_id: (raw.album_id ?? raw.AlbumID ?? 0) as string | number,
-    album_audio_id: (raw.album_audio_id ?? raw.Audioid ?? raw.audio_id ?? 0) as
+    // 酷狗 /song/url 的 album_audio_id 取 MixSongID；搜索结果的 Audioid 不是这个字段，
+    // 传错会被服务端当成无版权/无播放权限，直接返回空 URL。
+    album_audio_id: (raw.MixSongID ?? raw.mixsongid ?? raw.mix_song_id ?? raw.album_audio_id ?? 0) as
       | string
       | number,
     songname: declaredName || undefined,
@@ -376,31 +381,128 @@ function pickUrl(payload: Record<string, unknown>): string {
   return ''
 }
 
-/** 获取播放地址；free_part=1 尽量拿试听 */
-export async function fetchSongUrl(song: SongItem, freePart = true): Promise<string> {
+export type AudioQuality = 128 | 320
+
+/** 获取播放地址；高品失败时自动回退标准 */
+export async function fetchSongUrl(
+  song: SongItem,
+  freePart = true,
+  quality: AudioQuality = 128
+): Promise<string> {
   if (!readCookie().includes('dfid=')) {
     await registerDev()
   }
-  const { data } = await getClient().get('/song/url', {
+
+  const requestUrl = async (q: AudioQuality): Promise<string> => {
+    const hash = q === 320 ? song.hq_hash || song.hash : song.hash
+    const { data } = await getClient().get('/song/url', {
+      params: {
+        hash,
+        album_id: song.album_id || 0,
+        album_audio_id: song.album_audio_id || 0,
+        free_part: freePart ? 1 : 0,
+        quality: q
+      }
+    })
+
+    if (data?.error === '本次请求需要验证' || data?.errcode === 20028) {
+      throw new Error('平台要求安全验证，请稍后再试或重新登录')
+    }
+    if (data?.status === 0 && data?.error) {
+      throw new Error(String(data.error))
+    }
+    return pickUrl(data)
+  }
+
+  if (quality === 320 && !song.hq_hash) {
+    return requestUrl(128)
+  }
+
+  try {
+    const url = await requestUrl(quality)
+    if (url) return url
+    if (quality === 320) return requestUrl(128)
+    return ''
+  } catch (error) {
+    if (quality === 320) return requestUrl(128)
+    throw error
+  }
+}
+
+interface LyricCandidate {
+  id?: string
+  accesskey?: string
+}
+
+function decodeBase64Utf8(value: string): string {
+  const text = value.trim()
+  if (!text) return ''
+  // 少数接口会直接返回明文 LRC
+  if (/\[\d{1,3}:\d{1,2}/.test(text)) return text
+  try {
+    const binary = atob(text)
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+    return new TextDecoder('utf-8').decode(bytes)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 歌词分两步取：先用 hash 搜到歌词 id/accesskey，再下载 LRC。
+ * 没有候选时用“歌名 + 歌手”再试一次。
+ */
+export async function fetchLyricText(song: SongItem): Promise<string> {
+  const duration = Math.round(songDurationSeconds(song))
+  const readCandidates = (payload: Record<string, unknown> | undefined): LyricCandidate[] => {
+    const list =
+      (payload?.candidates as LyricCandidate[] | undefined) ||
+      ((payload?.data as Record<string, unknown> | undefined)?.candidates as
+        | LyricCandidate[]
+        | undefined)
+    return Array.isArray(list) ? list : []
+  }
+
+  let candidates: LyricCandidate[] = []
+  try {
+    const { data } = await getClient().get('/search/lyric', {
+      params: { hash: song.hash, duration }
+    })
+    candidates = readCandidates(data)
+  } catch {
+    /* 继续尝试关键词搜索 */
+  }
+
+  if (!candidates.some((item) => item?.id && item?.accesskey)) {
+    const keyword = [songTitle(song), songArtist(song)].filter(Boolean).join(' ')
+    if (keyword) {
+      try {
+        const { data } = await getClient().get('/search/lyric', {
+          params: { keyword, duration }
+        })
+        candidates = readCandidates(data)
+      } catch {
+        /* 没有歌词就算了 */
+      }
+    }
+  }
+
+  const candidate = candidates.find((item) => item?.id && item?.accesskey)
+  if (!candidate?.id || !candidate?.accesskey) return ''
+
+  const { data } = await getClient().get('/lyric', {
     params: {
-      hash: song.hash,
-      album_id: song.album_id || 0,
-      album_audio_id: song.album_audio_id || 0,
-      free_part: freePart ? 1 : 0,
-      quality: 128
+      id: candidate.id,
+      accesskey: candidate.accesskey,
+      fmt: 'lrc',
+      decode: 1
     }
   })
-
-  if (data?.error === '本次请求需要验证' || data?.errcode === 20028) {
-    throw new Error('平台要求安全验证，请稍后再试或重新登录')
-  }
-  if (data?.status === 0 && data?.error) {
-    throw new Error(String(data.error))
-  }
-
-  const url = pickUrl(data)
-  // 返回空串让播放器有机会再试 free_part=0；真正的错误在上面已经抛出
-  return url
+  const payload =
+    data?.data && typeof data.data === 'object' ? (data.data as Record<string, unknown>) : data
+  const decoded = String(payload?.decodeContent || '')
+  if (decoded) return decoded
+  return decodeBase64Utf8(String(payload?.content || ''))
 }
 
 /** Bust KuGouMusicApi 2-minute GET cache (docs: always pass timestamp). */
@@ -597,10 +699,12 @@ function extractAccountCandidates(data: Record<string, unknown>): AccountCandida
   const lists: unknown[] = [
     inner.list,
     inner.info,
+    inner.info_list,
     inner.users,
     inner.user_list,
     inner.accounts,
-    (inner.data as Record<string, unknown> | undefined)?.list
+    (inner.data as Record<string, unknown> | undefined)?.list,
+    (inner.data as Record<string, unknown> | undefined)?.info_list
   ]
   for (const list of lists) {
     if (!Array.isArray(list) || !list.length) continue
@@ -692,7 +796,15 @@ export async function loginCellphone(
   } catch (e: unknown) {
     if (e instanceof Error && !('response' in e)) throw e
     const ax = e as { response?: { data?: unknown }; message?: string }
-    if (ax?.response?.data) throw new Error(apiFailMessage(ax.response.data, '验证码登录失败'))
+    const failed = ax?.response?.data
+    if (failed && typeof failed === 'object') {
+      const body = failed as Record<string, unknown>
+      const candidates = extractAccountCandidates(body)
+      if (candidates.length && !userid) {
+        return { kind: 'choose', candidates, data: body }
+      }
+      throw new Error(apiFailMessage(body, '验证码登录失败'))
+    }
     throw e instanceof Error ? e : new Error(String(ax?.message || '验证码登录失败'))
   }
 }
@@ -738,7 +850,13 @@ export async function loginPassword(
   }
 }
 
-export async function fetchUserDetail(): Promise<{ nickname: string; pic: string; userid: string }> {
+export async function fetchUserDetail(): Promise<{
+  nickname: string
+  pic: string
+  userid: string
+  gender: number
+  isNew: boolean
+}> {
   const { data } = await getClient().get('/user/detail')
   const inner = (data?.data && typeof data.data === 'object' ? data.data : data) as Record<string, unknown>
   const nickname = String(
@@ -750,7 +868,31 @@ export async function fetchUserDetail(): Promise<{ nickname: string; pic: string
   if (pic.includes('{size}')) pic = pic.replace('{size}', '240')
   pic = secureImageUrl(pic)
   const userid = String(inner?.userid || inner?.user_id || getStoredUserid() || '')
-  return { nickname, pic, userid }
+  const gender = Number(inner?.sex ?? inner?.gender ?? 0)
+  const newFlags = ['is_new_user', 'is_new', 'new_user', 'need_set_profile', 'need_complete_info']
+  const isNew =
+    newFlags.some((key) => Number(inner?.[key]) === 1) ||
+    (inner?.profile_completed !== undefined && Number(inner.profile_completed) === 0)
+  return { nickname, pic, userid, gender: Number.isFinite(gender) ? gender : 0, isNew }
+}
+
+/** 首登完善资料：昵称 / 性别 */
+export async function updateUserProfile(fields: {
+  nickname?: string
+  sex?: number
+}): Promise<void> {
+  const { data } = await getClient().post('/user/update', null, { params: fields })
+  if (Number(data?.status) === 0) {
+    throw new Error(apiFailMessage(data, '保存资料失败'))
+  }
+}
+
+/** 首登完善资料：头像（base64 dataURL 或纯 base64） */
+export async function updateUserAvatar(imgFile: string): Promise<void> {
+  const { data } = await getClient().post('/user/update/avatar', { imgFile })
+  if (Number(data?.status) === 0) {
+    throw new Error(apiFailMessage(data, '头像上传失败'))
+  }
 }
 
 export function getStoredUserid(): string {

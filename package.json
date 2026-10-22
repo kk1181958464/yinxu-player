@@ -1,6 +1,6 @@
 {
   "name": "kugou-player",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "Apple Music style third-party music player",
   "main": "./out/main/index.js",
   "author": "Gina",
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@capacitor/app": "^6",
+    "@capacitor/browser": "^6",
     "@capacitor/core": "^6",
     "@capacitor/keyboard": "^6",
     "@capacitor/status-bar": "^6",

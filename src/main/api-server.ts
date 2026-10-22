@@ -1,4 +1,3 @@
-import { spawn, ChildProcess, execSync } from 'child_process'
 import { join } from 'path'
 import { app } from 'electron'
 import http from 'http'
@@ -6,7 +5,13 @@ import { existsSync } from 'fs'
 
 export const API_PORT = Number(process.env.KUGOU_API_PORT || 3678)
 
-let child: ChildProcess | null = null
+interface ApiService {
+  service?: {
+    close: (callback?: (err?: Error) => void) => void
+  }
+}
+
+let inProcessService: ApiService | null = null
 
 function serverRoot(): string {
   const candidates = [
@@ -45,11 +50,16 @@ function waitForPort(port: number, timeoutMs = 20000): Promise<void> {
   })
 }
 
+/**
+ * 直接在主进程里启动 Express，而不是再 spawn 一个同名的 音序.exe。
+ * 这样安装/更新时 NSIS 只会检测到主程序一个进程，不会因为隐藏的
+ * API 子进程没有窗口而提示“无法关闭”。
+ */
 export async function startApiServer(): Promise<void> {
-  if (child && !child.killed) return
+  if (inProcessService) return
 
   const cwd = serverRoot()
-  const entry = join(cwd, 'app.js')
+  const entry = join(cwd, 'server.js')
   console.log('[api-server] root =', cwd)
 
   try {
@@ -64,43 +74,25 @@ export async function startApiServer(): Promise<void> {
     throw new Error(`找不到 API 入口: ${entry}`)
   }
 
-  child = spawn(process.execPath, [entry], {
-    cwd,
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: '1',
-      PORT: String(API_PORT),
-      HOST: '127.0.0.1',
-      platform: process.env.platform || 'lite'
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true
-  })
+  process.env.PORT = String(API_PORT)
+  process.env.HOST = '127.0.0.1'
+  process.env.platform = process.env.platform || 'lite'
 
-  child.stdout?.on('data', (d) => console.log(`[api] ${String(d).trim()}`))
-  child.stderr?.on('data', (d) => console.error(`[api] ${String(d).trim()}`))
-  child.on('exit', (code) => {
-    console.log(`[api-server] exited: ${code}`)
-    child = null
-  })
-
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const serverModule = require(entry) as {
+    startService: () => Promise<ApiService>
+  }
+  inProcessService = await serverModule.startService()
   await waitForPort(API_PORT)
 }
 
 export function stopApiServer(): void {
-  if (!child) return
+  const service = inProcessService?.service
+  inProcessService = null
+  if (!service) return
   try {
-    if (process.platform === 'win32' && child.pid) {
-      try {
-        execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' })
-      } catch {
-        child.kill()
-      }
-    } else {
-      child.kill('SIGTERM')
-    }
+    service.close()
   } catch {
     // ignore
   }
-  child = null
 }

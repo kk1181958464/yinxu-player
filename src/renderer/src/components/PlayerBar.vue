@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   PhMusicNote,
   PhPause,
@@ -18,12 +19,35 @@ import {
 import CoverArt from './CoverArt.vue'
 import { usePlayerStore } from '../stores/player'
 import { formatClock } from '../utils/format'
-import { songTitle, songArtist, songCover } from '../api/kugou'
+import { songTitle, songArtist, songCover, fetchLyricText } from '../api/kugou'
+import { parseLyric, type LyricLine } from '../utils/lyric'
 
 const player = usePlayerStore()
+const router = useRouter()
 
 const queueOpen = ref(false)
 const queuePanel = ref<HTMLElement | null>(null)
+
+const lyricsOpen = ref(false)
+const lyricsPanel = ref<HTMLElement | null>(null)
+const lyricViewport = ref<HTMLElement | null>(null)
+const lyricLines = ref<LyricLine[]>([])
+const lyricLoading = ref(false)
+const lyricError = ref('')
+const lyricCache = new Map<string, LyricLine[]>()
+let lyricEpoch = 0
+
+const currentSong = computed(() => player.queue[player.currentIndex] || null)
+
+const activeLyricIndex = computed(() => {
+  const now = player.currentTime + 0.25
+  let index = -1
+  for (let i = 0; i < lyricLines.value.length; i += 1) {
+    if (lyricLines.value[i].time <= now) index = i
+    else break
+  }
+  return index
+})
 
 const progressPct = computed(() => `${player.progress.toFixed(2)}%`)
 const volumePct = computed(() =>
@@ -59,18 +83,109 @@ function playFromQueue(index: number): void {
   if (song) void player.playSong(song)
 }
 
-function onKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') queueOpen.value = false
+function openNowPlaying(): void {
+  if (!player.hasQueue) return
+  void router.push({ name: 'now-playing' })
 }
 
-watch(queueOpen, async (open) => {
-  if (open) {
+function openQueue(): void {
+  lyricsOpen.value = false
+  queueOpen.value = !queueOpen.value
+}
+
+function openLyrics(): void {
+  queueOpen.value = false
+  lyricsOpen.value = !lyricsOpen.value
+}
+
+async function loadLyrics(): Promise<void> {
+  const song = currentSong.value
+  if (!lyricsOpen.value || !song) {
+    lyricLines.value = []
+    lyricLoading.value = false
+    lyricError.value = ''
+    return
+  }
+
+  const cacheKey = song.hash || `${player.title}::${player.artist}`
+  const cached = lyricCache.get(cacheKey)
+  if (cached) {
+    lyricLines.value = cached
+    lyricLoading.value = false
+    lyricError.value = ''
+    return
+  }
+
+  const epoch = ++lyricEpoch
+  lyricLoading.value = true
+  lyricError.value = ''
+  lyricLines.value = []
+  try {
+    const raw = await fetchLyricText(song)
+    if (epoch !== lyricEpoch) return
+    const lines = parseLyric(raw)
+    lyricCache.set(cacheKey, lines)
+    lyricLines.value = lines
+  } catch {
+    if (epoch !== lyricEpoch) return
+    lyricLines.value = []
+    lyricError.value = '歌词加载失败'
+  } finally {
+    if (epoch === lyricEpoch) lyricLoading.value = false
+  }
+}
+
+function seekLyric(time: number): void {
+  player.seek(time)
+}
+
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    queueOpen.value = false
+    lyricsOpen.value = false
+  }
+}
+
+watch([queueOpen, lyricsOpen], async ([queue, lyrics]) => {
+  if (queue || lyrics) {
     document.addEventListener('keydown', onKeydown)
     await nextTick()
-    queuePanel.value?.focus()
+    if (queue) queuePanel.value?.focus()
+    else if (lyrics) lyricsPanel.value?.focus()
   } else {
     document.removeEventListener('keydown', onKeydown)
   }
+})
+
+watch(
+  [lyricsOpen, () => currentSong.value?.hash],
+  ([open]) => {
+    if (open) {
+      void loadLyrics()
+    } else {
+      lyricEpoch += 1
+      lyricLines.value = []
+      lyricLoading.value = false
+      lyricError.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+watch(activeLyricIndex, async (index) => {
+  if (!lyricsOpen.value || index < 0 || !lyricViewport.value) return
+  await nextTick()
+  const view = lyricViewport.value
+  const line = view.querySelectorAll<HTMLElement>('.lyrics-line')[index]
+  if (!view || !line) return
+  const viewRect = view.getBoundingClientRect()
+  const lineRect = line.getBoundingClientRect()
+  const top =
+    view.scrollTop +
+    (lineRect.top - viewRect.top) -
+    view.clientHeight / 2 +
+    line.clientHeight / 2
+  view.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
 })
 
 onBeforeUnmount(() => {
@@ -80,7 +195,13 @@ onBeforeUnmount(() => {
 
 <template>
   <footer class="player-bar">
-    <div class="now-playing">
+    <button
+      class="now-playing"
+      type="button"
+      :disabled="!player.hasQueue"
+      aria-label="打开正在播放详情"
+      @click="openNowPlaying"
+    >
       <CoverArt
         v-if="player.hasQueue"
         class="np-cover"
@@ -101,7 +222,7 @@ onBeforeUnmount(() => {
           {{ player.error || player.artist || '从首页或搜索中挑一首歌' }}
         </div>
       </div>
-    </div>
+    </button>
 
     <div class="np-center">
       <div class="np-controls">
@@ -182,12 +303,23 @@ onBeforeUnmount(() => {
     <div class="np-extra">
       <span class="np-queue-count">{{ player.hasQueue ? `${player.currentIndex + 1} / ${player.queue.length}` : '' }}</span>
       <button
+        class="quality-pill"
+        :class="{ high: player.quality === 320 }"
+        type="button"
+        :title="player.quality === 320 ? '当前：高品 320kbps，点击切换标准' : '当前：标准 128kbps，点击切换高品'"
+        :aria-label="player.quality === 320 ? '音质：高品 320kbps，点击切换标准' : '音质：标准 128kbps，点击切换高品'"
+        @click="player.toggleQuality()"
+      >
+        {{ player.quality === 320 ? '高品' : '标准' }}
+      </button>
+      <button
         class="icon-btn"
+        :class="{ on: queueOpen }"
         type="button"
         title="待播清单"
         aria-label="待播清单"
         :aria-expanded="queueOpen"
-        @click="queueOpen = !queueOpen"
+        @click="openQueue"
       >
         <PhQueue :size="17" />
       </button>
@@ -251,6 +383,47 @@ onBeforeUnmount(() => {
               </span>
               <span v-if="i === player.currentIndex" class="queue-badge">播放中</span>
             </button>
+          </div>
+        </section>
+      </div>
+    </Transition>
+
+    <Transition name="queue">
+      <div v-if="lyricsOpen" class="queue-layer">
+        <button class="queue-scrim" type="button" aria-label="关闭歌词" @click="lyricsOpen = false" />
+        <section
+          ref="lyricsPanel"
+          class="queue-panel lyrics-panel"
+          role="dialog"
+          aria-label="歌词"
+          tabindex="-1"
+        >
+          <header class="queue-head">
+            <div>
+              <h2>歌词</h2>
+              <p class="lyrics-sub">
+                {{ player.hasQueue ? `${player.title} · ${player.artist}` : '暂无播放' }}
+              </p>
+            </div>
+            <button class="icon-btn" type="button" title="关闭" aria-label="关闭" @click="lyricsOpen = false">
+              <PhX :size="15" />
+            </button>
+          </header>
+          <div ref="lyricViewport" class="lyrics-viewport">
+            <div v-if="lyricLoading" class="lyrics-empty">歌词加载中…</div>
+            <div v-else-if="lyricError" class="lyrics-empty">{{ lyricError }}</div>
+            <div v-else-if="!lyricLines.length" class="lyrics-empty">暂无歌词</div>
+            <div v-else class="lyrics-lines">
+              <p
+                v-for="(line, i) in lyricLines"
+                :key="`${line.time}-${i}`"
+                class="lyrics-line"
+                :class="{ active: i === activeLyricIndex }"
+                @click="seekLyric(line.time)"
+              >
+                {{ line.text }}
+              </p>
+            </div>
           </div>
         </section>
       </div>

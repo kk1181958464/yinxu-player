@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import {
   type SongItem,
+  type AudioQuality,
   songTitle,
   songArtist,
   songCover,
@@ -14,8 +15,10 @@ import { NativeAudio } from '../plugins/native-audio'
 import type { PluginListenerHandle } from '@capacitor/core'
 
 export type RepeatMode = 'off' | 'all' | 'one'
+export type PlayMode = 'order' | 'shuffle' | 'one'
 
 const VOLUME_KEY = 'kugou_player_volume'
+const QUALITY_KEY = 'kugou_player_quality'
 /** MSE 首包尽量小，尽快开播；后续分片加大，保证下载速度跟上播放 */
 const MSE_FIRST_CHUNK = 128 * 1024
 const MSE_CHUNK = 384 * 1024
@@ -36,6 +39,10 @@ function initialVolume(): number {
   return 0.8
 }
 
+function initialQuality(): AudioQuality {
+  return Number(localStorage.getItem(QUALITY_KEY)) === 320 ? 320 : 128
+}
+
 export const usePlayerStore = defineStore('player', () => {
   const queue = ref<SongItem[]>([])
   const currentIndex = ref(-1)
@@ -48,6 +55,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   const volume = ref(initialVolume())
   const muted = ref(false)
+  const quality = ref<AudioQuality>(initialQuality())
   const shuffle = ref(false)
   const repeat = ref<RepeatMode>('off')
 
@@ -442,7 +450,16 @@ export const usePlayerStore = defineStore('player', () => {
       if (epoch !== loadEpoch || !usingNativeAudio) return
       console.warn('[player] native audio error', ev.message)
     })
-    nativeListeners = [onTime, onPlaying, onEnded, onError]
+    const onMediaControl = await NativeAudio.addListener('mediaControl', (ev) => {
+      if (epoch !== loadEpoch || !usingNativeAudio) return
+      if (ev.action === 'next') void next()
+      else if (ev.action === 'prev') void prev()
+      else if (ev.action === 'seek' && typeof ev.position === 'number') seek(ev.position)
+      else if (ev.action === 'play' && !playing.value) toggle()
+      else if (ev.action === 'pause' && playing.value) toggle()
+      else if (ev.action === 'stop') stop()
+    })
+    nativeListeners = [onTime, onPlaying, onEnded, onError, onMediaControl]
   }
 
   /** 原生 MediaPlayer 直连 URL（可播 http CDN）；超时则失败给下一候选 */
@@ -464,8 +481,17 @@ export const usePlayerStore = defineStore('player', () => {
 
     let timer: ReturnType<typeof setTimeout> | null = null
     try {
+      const mediaSong = current.value
       await Promise.race([
-        NativeAudio.play({ url, volume: 1, muted: false }),
+        NativeAudio.play({
+          url,
+          volume: 1,
+          muted: false,
+          title: mediaSong ? songTitle(mediaSong) : '',
+          artist: mediaSong ? songArtist(mediaSong) : '',
+          cover: mediaSong ? songCover(mediaSong) : '',
+          duration: mediaSong ? songDurationSeconds(mediaSong) : duration.value
+        }),
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error('原生播放超时')), timeoutMs)
         })
@@ -538,6 +564,12 @@ export const usePlayerStore = defineStore('player', () => {
   const progress = computed(() => {
     if (!duration.value) return 0
     return Math.min(100, Math.max(0, (currentTime.value / duration.value) * 100))
+  })
+
+  const playMode = computed<PlayMode>(() => {
+    if (shuffle.value) return 'shuffle'
+    if (repeat.value === 'one') return 'one'
+    return 'order'
   })
 
   function applyVolume(): void {
@@ -664,6 +696,9 @@ export const usePlayerStore = defineStore('player', () => {
     if (/not allowed|user gesture|autoplay|play\(\) failed/i.test(message)) {
       return '请点击播放按钮开始播放'
     }
+    if (/需要验证|安全验证|20028/i.test(message)) {
+      return '账号登录状态需要验证，请重新登录后再试'
+    }
     if (/abort/i.test(message)) return '播放已取消'
     return message || '播放失败，请稍后重试'
   }
@@ -681,13 +716,13 @@ export const usePlayerStore = defineStore('player', () => {
     error.value = ''
     tryingSources = true
     try {
-      let url = await fetchSongUrl(song, true)
+      let url = await fetchSongUrl(song, true, quality.value)
       if (epoch !== loadEpoch) return
       if (!url) {
-        url = await fetchSongUrl(song, false)
+        url = await fetchSongUrl(song, false, quality.value)
         if (epoch !== loadEpoch) return
       }
-      if (!url) throw new Error('未拿到播放地址，请确认账号登录状态')
+      if (!url) throw new Error('这首歌暂时没有可用音源，请稍后重试或换一首')
       audioUrl.value = url
 
       const el = ensureAudio()
@@ -879,12 +914,51 @@ export const usePlayerStore = defineStore('player', () => {
     applyVolume()
   }
 
+  async function setQuality(next: AudioQuality): Promise<void> {
+    if (quality.value === next) return
+    quality.value = next
+    try {
+      localStorage.setItem(QUALITY_KEY, String(next))
+    } catch {
+      /* ignore */
+    }
+
+    const song = current.value
+    if (!song) return
+    const resumeAt = currentTime.value
+    const wasPlaying = playing.value
+    await loadAndPlay()
+    if (current.value !== song) return
+    if (resumeAt > 0) seek(resumeAt)
+    if (!wasPlaying && playing.value) toggle()
+  }
+
+  function toggleQuality(): void {
+    void setQuality(quality.value === 320 ? 128 : 320)
+  }
+
   function toggleShuffle(): void {
     shuffle.value = !shuffle.value
   }
 
   function cycleRepeat(): void {
     repeat.value = repeat.value === 'off' ? 'all' : repeat.value === 'all' ? 'one' : 'off'
+  }
+
+  /** 手机端单按钮轮换：顺序播放 → 随机播放 → 单曲循环 */
+  function cyclePlayMode(): void {
+    if (shuffle.value) {
+      shuffle.value = false
+      repeat.value = 'one'
+      return
+    }
+    if (repeat.value === 'one') {
+      repeat.value = 'off'
+      shuffle.value = false
+      return
+    }
+    shuffle.value = true
+    repeat.value = 'off'
   }
 
   /** 退出登录时彻底停止播放并清空队列 */
@@ -921,6 +995,7 @@ export const usePlayerStore = defineStore('player', () => {
     audioUrl,
     volume,
     muted,
+    quality,
     shuffle,
     repeat,
     title,
@@ -928,6 +1003,7 @@ export const usePlayerStore = defineStore('player', () => {
     cover,
     hasQueue,
     progress,
+    playMode,
     playSong,
     playQueue,
     loadAndPlay,
@@ -937,8 +1013,11 @@ export const usePlayerStore = defineStore('player', () => {
     prev,
     setVolume,
     toggleMute,
+    setQuality,
+    toggleQuality,
     toggleShuffle,
     cycleRepeat,
+    cyclePlayMode,
     stop
   }
 })

@@ -8,6 +8,9 @@ import {
   sendCaptcha,
   loginCellphone,
   loginPassword,
+  fetchUserDetail,
+  updateUserProfile,
+  updateUserAvatar,
   type AccountCandidate,
   type FinalizeLoginResult,
   type QrCheckResult
@@ -27,6 +30,13 @@ export function useLogin() {
   const busy = ref(false)
   const message = ref('')
   const error = ref('')
+
+  const profileRequired = ref(false)
+  const profileBusy = ref(false)
+  const profileError = ref('')
+  const profileNickname = ref('')
+  const profileGender = ref(0)
+  const profilePic = ref('')
 
   const mobile = ref('')
   const smsCode = ref('')
@@ -86,12 +96,91 @@ export function useLogin() {
       error.value = result.warning || '登录未完成，请重试'
       return
     }
+
+    // 新手机号验证码登录会自动创建账号；官方 App 会紧接着让用户
+    // 设置头像/昵称/性别。这里先查资料，资料不完整就进入完善步骤。
+    let detail: Awaited<ReturnType<typeof fetchUserDetail>> | null = null
+    try {
+      detail = await fetchUserDetail()
+    } catch {
+      // 资料接口失败时不阻塞登录
+    }
+    if (detail) {
+      const nickname = detail.nickname.trim()
+      const defaultNickname =
+        !nickname || /^酷狗(音乐)?用户/i.test(nickname) || /^kg_?user/i.test(nickname)
+      if (detail.isNew || defaultNickname || !detail.pic) {
+        profileRequired.value = true
+        profileBusy.value = false
+        profileError.value = ''
+        profileNickname.value = defaultNickname ? '' : nickname
+        profileGender.value = detail.gender === 1 || detail.gender === 2 ? detail.gender : 0
+        profilePic.value = detail.pic
+        message.value = '首次登录，请完善头像、昵称和性别'
+        error.value = ''
+        return
+      }
+    }
+
     await app.completeLogin()
     if (app.loggedIn) {
       message.value = '登录成功，正在进入…'
       error.value = ''
     } else {
       error.value = '登录状态校验失败，请重试'
+    }
+  }
+
+  async function completeProfile(avatarDataUrl: string): Promise<void> {
+    if (profileBusy.value) return
+    const nickname = profileNickname.value.trim()
+    if (nickname.length < 2) {
+      profileError.value = '昵称至少需要 2 个字符'
+      return
+    }
+
+    profileBusy.value = true
+    profileError.value = ''
+    try {
+      await updateUserProfile({ nickname, sex: profileGender.value })
+      if (avatarDataUrl) {
+        try {
+          await updateUserAvatar(avatarDataUrl)
+        } catch (e) {
+          profileError.value = e instanceof Error ? e.message : '头像上传失败，请重试或跳过'
+          return
+        }
+      }
+
+      profileRequired.value = false
+      await app.completeLogin()
+      if (app.loggedIn) {
+        message.value = '注册完成，正在进入…'
+        error.value = ''
+      } else {
+        profileError.value = '登录状态校验失败，请重试'
+      }
+    } catch (e) {
+      profileError.value = e instanceof Error ? e.message : '资料保存失败'
+    } finally {
+      profileBusy.value = false
+    }
+  }
+
+  async function skipProfile(): Promise<void> {
+    if (profileBusy.value) return
+    profileRequired.value = false
+    profileBusy.value = true
+    try {
+      await app.completeLogin()
+      if (app.loggedIn) {
+        message.value = '登录成功，正在进入…'
+        error.value = ''
+      } else {
+        error.value = '登录状态校验失败，请重试'
+      }
+    } finally {
+      profileBusy.value = false
     }
   }
 
@@ -300,6 +389,12 @@ export function useLogin() {
     busy,
     message,
     error,
+    profileRequired,
+    profileBusy,
+    profileError,
+    profileNickname,
+    profileGender,
+    profilePic,
     mobile,
     smsCode,
     smsSending,
@@ -314,6 +409,8 @@ export function useLogin() {
     submit,
     startQr,
     pickCandidate,
-    switchTab
+    switchTab,
+    completeProfile,
+    skipProfile
   }
 }

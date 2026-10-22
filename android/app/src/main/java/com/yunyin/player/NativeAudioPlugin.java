@@ -22,12 +22,18 @@ public class NativeAudioPlugin extends Plugin {
     private boolean tickRunning = false;
     private int playGeneration = 0;
     private PluginCall pendingPlayCall;
+    private long lastMediaTick = 0;
 
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
             if (!tickRunning) return;
             emitStatus("timeupdate");
+            long now = System.currentTimeMillis();
+            if (now - lastMediaTick > 1000) {
+                lastMediaTick = now;
+                PlaybackService.updatePosition((long) (safePosition() * 1000));
+            }
             handler.postDelayed(this, 250);
         }
     };
@@ -43,6 +49,7 @@ public class NativeAudioPlugin extends Plugin {
         );
         player.setOnCompletionListener(mp -> {
             stopTick();
+            PlaybackService.updateState(getContext(), false, 0, (long) (safeDuration() * 1000));
             JSObject data = new JSObject();
             data.put("currentTime", 0);
             data.put("duration", safeDuration());
@@ -51,6 +58,7 @@ public class NativeAudioPlugin extends Plugin {
         });
         player.setOnErrorListener((mp, what, extra) -> {
             stopTick();
+            PlaybackService.stop(getContext());
             String msg = "MediaPlayer error what=" + what + " extra=" + extra;
             if (pendingPlayCall != null) {
                 pendingPlayCall.reject(msg);
@@ -124,6 +132,16 @@ public class NativeAudioPlugin extends Plugin {
         }
     }
 
+    @Override
+    public void load() {
+        PlaybackService.setControlListener((action, positionMs) -> {
+            JSObject data = new JSObject();
+            data.put("action", action);
+            data.put("position", positionMs / 1000.0);
+            notifyListeners("mediaControl", data);
+        });
+    }
+
     @PluginMethod
     public void play(PluginCall call) {
         String url = call.getString("url");
@@ -131,6 +149,13 @@ public class NativeAudioPlugin extends Plugin {
             call.reject("url is required");
             return;
         }
+        final String mediaTitle = call.getString("title", "");
+        final String mediaArtist = call.getString("artist", "");
+        final String mediaCover = call.getString("cover", "");
+        Double durationObj = call.getDouble("duration", 0.0);
+        final long mediaDurationMs = durationObj == null
+            ? 0
+            : Math.max(0, (long) (durationObj * 1000));
         Double volObj = call.getDouble("volume");
         boolean muted = Boolean.TRUE.equals(call.getBoolean("muted", false));
         float volume = muted ? 0f : (volObj != null ? volObj.floatValue() : 1f);
@@ -154,6 +179,15 @@ public class NativeAudioPlugin extends Plugin {
                         mp.setVolume(finalVolume, finalVolume);
                         mp.start();
                         startTick();
+                        PlaybackService.show(
+                            getContext(),
+                            mediaTitle,
+                            mediaArtist,
+                            mediaCover,
+                            mediaDurationMs,
+                            true,
+                            0
+                        );
                         emitStatus("playing");
                         if (pendingPlayCall == call) {
                             pendingPlayCall = null;
@@ -169,6 +203,7 @@ public class NativeAudioPlugin extends Plugin {
                 player.prepareAsync();
             } catch (Exception e) {
                 pendingPlayCall = null;
+                PlaybackService.stop(getContext());
                 call.reject("play failed: " + e.getMessage());
             }
         });
@@ -182,6 +217,12 @@ public class NativeAudioPlugin extends Plugin {
                     player.pause();
                 }
                 stopTick();
+                PlaybackService.updateState(
+                    getContext(),
+                    false,
+                    (long) (safePosition() * 1000),
+                    (long) (safeDuration() * 1000)
+                );
                 emitStatus("timeupdate");
                 call.resolve();
             } catch (Exception e) {
@@ -197,6 +238,12 @@ public class NativeAudioPlugin extends Plugin {
                 if (player != null) {
                     player.start();
                     startTick();
+                    PlaybackService.updateState(
+                        getContext(),
+                        true,
+                        (long) (safePosition() * 1000),
+                        (long) (safeDuration() * 1000)
+                    );
                     emitStatus("playing");
                 }
                 call.resolve();
@@ -211,6 +258,7 @@ public class NativeAudioPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             playGeneration++;
             resetPlayer();
+            PlaybackService.stop(getContext());
             JSObject data = new JSObject();
             data.put("currentTime", 0);
             data.put("duration", 0);
@@ -232,6 +280,12 @@ public class NativeAudioPlugin extends Plugin {
                 if (player != null) {
                     int ms = (int) Math.max(0, time * 1000);
                     player.seekTo(ms);
+                    PlaybackService.updateState(
+                        getContext(),
+                        isPlayingSafe(),
+                        ms,
+                        (long) (safeDuration() * 1000)
+                    );
                     emitStatus("timeupdate");
                 }
                 call.resolve();
@@ -272,6 +326,8 @@ public class NativeAudioPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        PlaybackService.setControlListener(null);
+        PlaybackService.stop(getContext());
         resetPlayer();
         super.handleOnDestroy();
     }

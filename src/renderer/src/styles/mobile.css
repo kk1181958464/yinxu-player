@@ -753,6 +753,18 @@ html.mobile-layout .player-sheet-head {
   color: var(--text-3);
 }
 
+html.mobile-layout .sheet-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+html.mobile-layout .quality-pill {
+  height: 24px;
+  padding: 0 9px;
+  font-size: 10px;
+}
+
 html.mobile-layout .player-sheet-head .icon-btn {
   width: 38px;
   height: 38px;
@@ -760,9 +772,9 @@ html.mobile-layout .player-sheet-head .icon-btn {
 
 html.mobile-layout .player-sheet-art {
   flex: none;
-  width: min(72vw, 300px);
-  height: min(72vw, 300px);
-  margin: clamp(24px, 6vh, 56px) auto 0;
+  width: min(58vw, 240px);
+  height: min(58vw, 240px);
+  margin: clamp(16px, 4vh, 36px) auto 0;
 }
 
 html.mobile-layout .player-sheet-art .cover {
@@ -803,6 +815,130 @@ html.mobile-layout .player-sheet-error {
   line-height: 1.5;
   text-align: center;
   color: #ff9aa4;
+}
+
+html.mobile-layout .player-sheet-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 8px;
+}
+
+html.mobile-layout .sheet-cover-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: clamp(4px, 2vh, 18px);
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout .sheet-cover-view .player-sheet-art {
+  margin: 0 auto;
+}
+
+html.mobile-layout .sheet-cover-view .player-sheet-meta {
+  width: 100%;
+  margin-top: 20px;
+}
+
+html.mobile-layout .sheet-cover-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 14px;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+html.mobile-layout .sheet-lyrics-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+html.mobile-layout .sheet-lyrics-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 8px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+html.mobile-layout .sheet-cover-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-3);
+  font-size: 10px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout .sheet-lyrics-view .player-sheet-lyrics {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  margin-top: 0;
+}
+
+html.mobile-layout .player-sheet-lyrics {
+  position: relative;
+  flex: none;
+  height: clamp(120px, 22vh, 200px);
+  margin-top: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 12%, #000 88%, transparent 100%);
+}
+
+html.mobile-layout .player-sheet-lyrics::-webkit-scrollbar {
+  display: none;
+}
+
+html.mobile-layout .lyric-lines {
+  position: relative;
+  padding: 40px 4px;
+  text-align: center;
+}
+
+html.mobile-layout .lyric-line {
+  margin: 0;
+  padding: 5px 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    color 0.18s var(--ease),
+    font-size 0.18s var(--ease);
+}
+
+html.mobile-layout .lyric-line.active {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+html.mobile-layout .lyric-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-3);
 }
 
 html.mobile-layout .player-sheet-progress {
@@ -876,6 +1012,136 @@ html.mobile-layout .sheet-play:active:not(:disabled) {
 html.mobile-layout .sheet-play:disabled {
   background: rgba(255, 255, 255, 0.2);
   color: rgba(0, 0, 0, 0.4);
+}
+
+html.mobile-layout .mobile-queue-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+html.mobile-layout .mobile-queue-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(5px);
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout .mobile-queue-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 72dvh;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  overflow: hidden;
+  border-radius: 22px 22px 0 0;
+  background: #1b1b20;
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6);
+}
+
+html.mobile-layout .mobile-queue-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+html.mobile-layout .mobile-queue-head h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+html.mobile-layout .mobile-queue-head span {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+html.mobile-layout .mobile-queue-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 10px 8px;
+}
+
+html.mobile-layout .mobile-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 8px;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.mobile-layout .mobile-queue-item.active {
+  background: var(--accent-soft);
+}
+
+html.mobile-layout .mobile-queue-cover {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 5px;
+}
+
+html.mobile-layout .mobile-queue-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+html.mobile-layout .mobile-queue-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+html.mobile-layout .mobile-queue-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+
+html.mobile-layout .mobile-queue-badge {
+  flex: none;
+  font-size: 9.5px;
+  color: var(--accent);
+}
+
+html.mobile-layout .mobile-queue-enter-active,
+html.mobile-layout .mobile-queue-leave-active {
+  transition: opacity 0.2s var(--ease);
+}
+
+html.mobile-layout .mobile-queue-enter-from,
+html.mobile-layout .mobile-queue-leave-to {
+  opacity: 0;
+}
+
+html.mobile-layout .mobile-queue-enter-active .mobile-queue-panel,
+html.mobile-layout .mobile-queue-leave-active .mobile-queue-panel {
+  transition: transform 0.25s var(--ease);
+}
+
+html.mobile-layout .mobile-queue-enter-from .mobile-queue-panel,
+html.mobile-layout .mobile-queue-leave-to .mobile-queue-panel {
+  transform: translateY(100%);
 }
 
 html.mobile-layout .sheet-enter-active,
