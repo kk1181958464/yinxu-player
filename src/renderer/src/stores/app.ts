@@ -65,9 +65,27 @@ export const useAppStore = defineStore('app', () => {
   async function bootstrap(): Promise<void> {
     bootError.value = ''
     try {
-      await initApiBase()
-      await registerDev()
-      apiReady.value = true
+      let lastError: unknown = null
+      // 窗口先显示，本地 API 在窗口 ready-to-show 之后才启动；
+      // 这里短暂重试，避免用户看到“无法连接音乐服务”。
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+          await initApiBase()
+          await registerDev()
+          apiReady.value = true
+          lastError = null
+          break
+        } catch (e) {
+          lastError = e
+          apiReady.value = false
+          if (attempt < 19) {
+            await new Promise((resolve) => setTimeout(resolve, 250))
+          }
+        }
+      }
+      if (!apiReady.value) {
+        throw lastError instanceof Error ? lastError : new Error('API not ready')
+      }
 
       loggedIn.value = hasLoginToken()
       if (loggedIn.value) {

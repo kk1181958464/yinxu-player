@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
+  PhCircleNotch,
   PhMusicNote,
   PhPause,
   PhPlay,

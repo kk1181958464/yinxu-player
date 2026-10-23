@@ -19,6 +19,9 @@ export type PlayMode = 'order' | 'shuffle' | 'one'
 
 const VOLUME_KEY = 'kugou_player_volume'
 const QUALITY_KEY = 'kugou_player_quality'
+const SHUFFLE_KEY = 'kugou_player_shuffle'
+const REPEAT_KEY = 'kugou_player_repeat'
+const RECENT_KEY = 'kugou_recent_played'
 /** MSE 首包尽量小，尽快开播；后续分片加大，保证下载速度跟上播放 */
 const MSE_FIRST_CHUNK = 128 * 1024
 const MSE_CHUNK = 384 * 1024
@@ -43,6 +46,26 @@ function initialQuality(): AudioQuality {
   return Number(localStorage.getItem(QUALITY_KEY)) === 320 ? 320 : 128
 }
 
+function initialShuffle(): boolean {
+  return localStorage.getItem(SHUFFLE_KEY) === '1'
+}
+
+function initialRepeat(): RepeatMode {
+  const raw = localStorage.getItem(REPEAT_KEY)
+  return raw === 'one' || raw === 'all' ? raw : 'off'
+}
+
+function initialRecent(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') as unknown
+    return Array.isArray(raw)
+      ? raw.filter((item): item is string => typeof item === 'string').slice(-300)
+      : []
+  } catch {
+    return []
+  }
+}
+
 export const usePlayerStore = defineStore('player', () => {
   const queue = ref<SongItem[]>([])
   const currentIndex = ref(-1)
@@ -56,8 +79,63 @@ export const usePlayerStore = defineStore('player', () => {
   const volume = ref(initialVolume())
   const muted = ref(false)
   const quality = ref<AudioQuality>(initialQuality())
-  const shuffle = ref(false)
-  const repeat = ref<RepeatMode>('off')
+  const shuffle = ref(initialShuffle())
+  const repeat = ref<RepeatMode>(initialRepeat())
+  const recentPlayed = ref<string[]>(initialRecent())
+  let shuffleBack: number[] = []
+
+  function songKey(song: SongItem): string {
+    return song.hash || `${songTitle(song)}::${songArtist(song)}`
+  }
+
+  function markPlayed(song: SongItem): void {
+    const key = songKey(song)
+    if (!key) return
+    const next = recentPlayed.value.filter((item) => item !== key)
+    next.push(key)
+    recentPlayed.value = next.slice(-300)
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(recentPlayed.value))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function persistPlayMode(): void {
+    try {
+      localStorage.setItem(SHUFFLE_KEY, shuffle.value ? '1' : '0')
+      localStorage.setItem(REPEAT_KEY, repeat.value)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * 随机播放优先选择没听过的歌；全部听过时只在“最久没听”的那一部分里随机，
+   * 避免总是重复当前/最近几首。
+   */
+  function nextShuffleIndex(): number {
+    const n = queue.value.length
+    if (n <= 1) return n - 1
+    const current = currentIndex.value
+    const recentIndex = new Map<string, number>()
+    recentPlayed.value.forEach((key, index) => recentIndex.set(key, index))
+    const candidates = queue.value
+      .map((song, index) => ({ index, key: songKey(song) }))
+      .filter((item) => item.index !== current)
+    if (!candidates.length) return current
+
+    const unheard = candidates.filter((item) => !recentIndex.has(item.key))
+    if (unheard.length) {
+      return unheard[Math.floor(Math.random() * unheard.length)].index
+    }
+
+    const sorted = candidates.sort(
+      (a, b) => (recentIndex.get(a.key) ?? 0) - (recentIndex.get(b.key) ?? 0)
+    )
+    const pool = sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 3)))
+    return pool[Math.floor(Math.random() * pool.length)].index
+  }
 
   let audio: HTMLAudioElement | null = null
   /** 每次切歌/停止递增，用来丢弃过期的异步播放请求 */
@@ -645,13 +723,20 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function playRandom(): Promise<void> {
+    if (!queue.value.length) return
     if (queue.value.length < 2) {
       await loadAndPlay()
       return
     }
-    let idx = currentIndex.value
-    while (idx === currentIndex.value) {
-      idx = Math.floor(Math.random() * queue.value.length)
+    const from = currentIndex.value
+    const idx = nextShuffleIndex()
+    if (idx === from) {
+      await loadAndPlay()
+      return
+    }
+    if (from >= 0) {
+      shuffleBack.push(from)
+      if (shuffleBack.length > 50) shuffleBack.shift()
     }
     currentIndex.value = idx
     await loadAndPlay()
@@ -660,6 +745,7 @@ export const usePlayerStore = defineStore('player', () => {
   async function playQueue(list: SongItem[], startIndex = 0): Promise<void> {
     if (!list.length) return
     queue.value = list
+    shuffleBack = []
     currentIndex.value = Math.min(Math.max(startIndex, 0), list.length - 1)
     await loadAndPlay()
   }
@@ -679,6 +765,7 @@ export const usePlayerStore = defineStore('player', () => {
         currentIndex.value = queue.value.length - 1
       }
     }
+    shuffleBack = []
     await loadAndPlay()
   }
 
@@ -706,6 +793,7 @@ export const usePlayerStore = defineStore('player', () => {
   async function loadAndPlay(): Promise<void> {
     const song = current.value
     if (!song?.hash) return
+    markPlayed(song)
     const epoch = ++loadEpoch
     if (audio) audio.pause()
     if (isCapacitorNative()) cleanupMse()
@@ -894,6 +982,12 @@ export const usePlayerStore = defineStore('player', () => {
   async function prev(): Promise<void> {
     if (!queue.value.length) return
     if (shuffle.value) {
+      const back = shuffleBack.pop()
+      if (back != null && back >= 0 && back < queue.value.length) {
+        currentIndex.value = back
+        await loadAndPlay()
+        return
+      }
       await playRandom()
       return
     }
@@ -939,10 +1033,12 @@ export const usePlayerStore = defineStore('player', () => {
 
   function toggleShuffle(): void {
     shuffle.value = !shuffle.value
+    persistPlayMode()
   }
 
   function cycleRepeat(): void {
     repeat.value = repeat.value === 'off' ? 'all' : repeat.value === 'all' ? 'one' : 'off'
+    persistPlayMode()
   }
 
   /** 手机端单按钮轮换：顺序播放 → 随机播放 → 单曲循环 */
@@ -950,15 +1046,14 @@ export const usePlayerStore = defineStore('player', () => {
     if (shuffle.value) {
       shuffle.value = false
       repeat.value = 'one'
-      return
-    }
-    if (repeat.value === 'one') {
+    } else if (repeat.value === 'one') {
       repeat.value = 'off'
       shuffle.value = false
-      return
+    } else {
+      shuffle.value = true
+      repeat.value = 'off'
     }
-    shuffle.value = true
-    repeat.value = 'off'
+    persistPlayMode()
   }
 
   /** 退出登录时彻底停止播放并清空队列 */
@@ -975,6 +1070,7 @@ export const usePlayerStore = defineStore('player', () => {
       audio.load()
     }
     queue.value = []
+    shuffleBack = []
     currentIndex.value = -1
     playing.value = false
     currentTime.value = 0

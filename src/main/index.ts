@@ -66,6 +66,8 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
+    // 先把窗口画出来，再启动本地 API；渲染端会短暂重试等待 API 就绪。
+    setTimeout(ensureApiServer, 80)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -80,18 +82,23 @@ function createWindow(): void {
   }
 }
 
+let apiStartRequested = false
+
+function ensureApiServer(): void {
+  if (apiStartRequested) return
+  apiStartRequested = true
+  void startApiServer()
+    .then(() => console.log(`[main] KuGouMusicApi @ http://127.0.0.1:${API_PORT}`))
+    .catch((err) => console.error('[main] API server failed to start:', err))
+}
+
 app.setAppUserModelId('com.gina.kugou-player')
 
-app.whenReady().then(async () => {
-  try {
-    await startApiServer()
-    console.log(`[main] KuGouMusicApi @ http://127.0.0.1:${API_PORT}`)
-  } catch (err) {
-    console.error('[main] API server failed to start:', err)
-  }
-
+app.whenReady().then(() => {
   createWindow()
   createTray()
+  // 兜底：如果 ready-to-show 没有触发，也不能让 API 永远不启动。
+  setTimeout(ensureApiServer, 1500)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
