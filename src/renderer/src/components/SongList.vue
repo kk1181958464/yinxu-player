@@ -61,7 +61,7 @@ function activate(s: SongItem): void {
         v-for="(s, i) in songs"
         :key="(s.hash || '') + '-' + i"
         class="track-row"
-        :class="{ current: s.hash === currentHash }"
+        :class="{ current: s.hash === currentHash, unavailable: player.isUnavailable(s) }"
         role="button"
         tabindex="0"
         :aria-label="`播放 ${songTitle(s)} - ${songArtist(s)}`"
@@ -78,7 +78,10 @@ function activate(s: SongItem): void {
         <span class="track-col-main">
           <CoverArt class="track-art" :src="songCover(s)" :alt="songTitle(s)" :icon-size="14" />
           <span class="track-text">
-            <span class="track-name">{{ songTitle(s) }}</span>
+            <span class="track-name">
+              {{ songTitle(s) }}
+              <span v-if="player.isUnavailable(s)" class="track-badge">已下架</span>
+            </span>
             <span class="track-artist">{{ songArtist(s) }}</span>
           </span>
         </span>

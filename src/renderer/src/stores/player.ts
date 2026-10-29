@@ -8,20 +8,23 @@ import {
   songCover,
   songDurationSeconds,
   fetchSongUrl,
-  getApiBase
+  getApiBase,
+  SongUnavailableError
 } from '../api/kugou'
 import { isCapacitorNative } from '../utils/platform'
 import { NativeAudio } from '../plugins/native-audio'
 import type { PluginListenerHandle } from '@capacitor/core'
 
-export type RepeatMode = 'off' | 'all' | 'one'
+/** 三种互斥的播放模式：列表循环 / 随机播放 / 单曲循环 */
 export type PlayMode = 'order' | 'shuffle' | 'one'
 
 const VOLUME_KEY = 'kugou_player_volume'
 const QUALITY_KEY = 'kugou_player_quality'
-const SHUFFLE_KEY = 'kugou_player_shuffle'
-const REPEAT_KEY = 'kugou_player_repeat'
+const PLAY_MODE_KEY = 'kugou_player_mode'
+const LEGACY_SHUFFLE_KEY = 'kugou_player_shuffle'
+const LEGACY_REPEAT_KEY = 'kugou_player_repeat'
 const RECENT_KEY = 'kugou_recent_played'
+const UNAVAILABLE_KEY = 'kugou_unavailable_songs'
 /** MSE 首包尽量小，尽快开播；后续分片加大，保证下载速度跟上播放 */
 const MSE_FIRST_CHUNK = 128 * 1024
 const MSE_CHUNK = 384 * 1024
@@ -46,18 +49,18 @@ function initialQuality(): AudioQuality {
   return Number(localStorage.getItem(QUALITY_KEY)) === 320 ? 320 : 128
 }
 
-function initialShuffle(): boolean {
-  return localStorage.getItem(SHUFFLE_KEY) === '1'
+function initialPlayMode(): PlayMode {
+  const raw = localStorage.getItem(PLAY_MODE_KEY)
+  if (raw === 'order' || raw === 'shuffle' || raw === 'one') return raw
+  // 旧版本随机/循环是两个独立开关
+  if (localStorage.getItem(LEGACY_SHUFFLE_KEY) === '1') return 'shuffle'
+  if (localStorage.getItem(LEGACY_REPEAT_KEY) === 'one') return 'one'
+  return 'order'
 }
 
-function initialRepeat(): RepeatMode {
-  const raw = localStorage.getItem(REPEAT_KEY)
-  return raw === 'one' || raw === 'all' ? raw : 'off'
-}
-
-function initialRecent(): string[] {
+function readStringList(key: string): string[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') as unknown
+    const raw = JSON.parse(localStorage.getItem(key) || '[]') as unknown
     return Array.isArray(raw)
       ? raw.filter((item): item is string => typeof item === 'string').slice(-300)
       : []
@@ -79,10 +82,42 @@ export const usePlayerStore = defineStore('player', () => {
   const volume = ref(initialVolume())
   const muted = ref(false)
   const quality = ref<AudioQuality>(initialQuality())
-  const shuffle = ref(initialShuffle())
-  const repeat = ref<RepeatMode>(initialRepeat())
-  const recentPlayed = ref<string[]>(initialRecent())
+  const playMode = ref<PlayMode>(initialPlayMode())
+  const shuffle = computed(() => playMode.value === 'shuffle')
+  const recentPlayed = ref<string[]>(readStringList(RECENT_KEY))
+  const unavailable = ref(new Set(readStringList(UNAVAILABLE_KEY)))
   let shuffleBack: number[] = []
+  /** 下一次 loadAndPlay 遇到下架歌曲时的跳过方向；用户直接点歌时为 0，只提示不跳 */
+  let skipDirection: 1 | -1 | 0 = 0
+  let skippedInRow = 0
+
+  function isUnavailable(song: SongItem): boolean {
+    return Boolean(song.hash) && unavailable.value.has(song.hash)
+  }
+
+  function setUnavailable(song: SongItem, flag: boolean): void {
+    if (!song.hash || isUnavailable(song) === flag) return
+    const next = new Set(unavailable.value)
+    if (flag) next.add(song.hash)
+    else next.delete(song.hash)
+    unavailable.value = next
+    try {
+      localStorage.setItem(UNAVAILABLE_KEY, JSON.stringify([...next].slice(-300)))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** 顺序切歌时跳过已知下架的歌；全部下架则退回相邻一首 */
+  function stepIndex(dir: 1 | -1): number {
+    const n = queue.value.length
+    const from = currentIndex.value
+    for (let k = 1; k < n; k++) {
+      const i = (((from + dir * k) % n) + n) % n
+      if (!isUnavailable(queue.value[i])) return i
+    }
+    return (((from + dir) % n) + n) % n
+  }
 
   function songKey(song: SongItem): string {
     return song.hash || `${songTitle(song)}::${songArtist(song)}`
@@ -101,10 +136,10 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  function persistPlayMode(): void {
+  function setPlayMode(mode: PlayMode): void {
+    playMode.value = mode
     try {
-      localStorage.setItem(SHUFFLE_KEY, shuffle.value ? '1' : '0')
-      localStorage.setItem(REPEAT_KEY, repeat.value)
+      localStorage.setItem(PLAY_MODE_KEY, mode)
     } catch {
       /* ignore */
     }
@@ -122,7 +157,7 @@ export const usePlayerStore = defineStore('player', () => {
     recentPlayed.value.forEach((key, index) => recentIndex.set(key, index))
     const candidates = queue.value
       .map((song, index) => ({ index, key: songKey(song) }))
-      .filter((item) => item.index !== current)
+      .filter((item) => item.index !== current && !isUnavailable(queue.value[item.index]))
     if (!candidates.length) return current
 
     const unheard = candidates.filter((item) => !recentIndex.has(item.key))
@@ -164,7 +199,8 @@ export const usePlayerStore = defineStore('player', () => {
    */
   async function unlockAudioOutput(): Promise<void> {
     applyVolume()
-    if (audio) {
+    // 原生端没有应用内音量条，静音/音量过低只可能是异常状态；桌面端要尊重用户的静音设置
+    if (audio && isCapacitorNative()) {
       // 避免静音状态“播了但听不见”
       if (muted.value) {
         muted.value = false
@@ -644,12 +680,6 @@ export const usePlayerStore = defineStore('player', () => {
     return Math.min(100, Math.max(0, (currentTime.value / duration.value) * 100))
   })
 
-  const playMode = computed<PlayMode>(() => {
-    if (shuffle.value) return 'shuffle'
-    if (repeat.value === 'one') return 'one'
-    return 'order'
-  })
-
   function applyVolume(): void {
     const native = isCapacitorNative()
     const outputVolume = native ? 1 : volume.value
@@ -700,7 +730,12 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   async function handleEnded(): Promise<void> {
-    if (repeat.value === 'one') {
+    if (playMode.value === 'one') {
+      // 原生端播放器在 Java 侧，直接重新加载最稳
+      if (usingNativeAudio) {
+        await loadAndPlay()
+        return
+      }
       const el = ensureAudio()
       el.currentTime = 0
       try {
@@ -714,11 +749,6 @@ export const usePlayerStore = defineStore('player', () => {
       await playRandom()
       return
     }
-    const isLast = currentIndex.value >= queue.value.length - 1
-    if (isLast && repeat.value === 'off') {
-      playing.value = false
-      return
-    }
     await next()
   }
 
@@ -728,6 +758,7 @@ export const usePlayerStore = defineStore('player', () => {
       await loadAndPlay()
       return
     }
+    skipDirection = 1
     const from = currentIndex.value
     const idx = nextShuffleIndex()
     if (idx === from) {
@@ -747,6 +778,8 @@ export const usePlayerStore = defineStore('player', () => {
     queue.value = list
     shuffleBack = []
     currentIndex.value = Math.min(Math.max(startIndex, 0), list.length - 1)
+    skipDirection = 1
+    skippedInRow = 0
     await loadAndPlay()
   }
 
@@ -766,6 +799,8 @@ export const usePlayerStore = defineStore('player', () => {
       }
     }
     shuffleBack = []
+    skipDirection = 0
+    skippedInRow = 0
     await loadAndPlay()
   }
 
@@ -794,6 +829,8 @@ export const usePlayerStore = defineStore('player', () => {
     const song = current.value
     if (!song?.hash) return
     markPlayed(song)
+    const direction = skipDirection
+    skipDirection = 0
     const epoch = ++loadEpoch
     if (audio) audio.pause()
     if (isCapacitorNative()) cleanupMse()
@@ -811,6 +848,8 @@ export const usePlayerStore = defineStore('player', () => {
         if (epoch !== loadEpoch) return
       }
       if (!url) throw new Error('这首歌暂时没有可用音源，请稍后重试或换一首')
+      setUnavailable(song, false)
+      skippedInRow = 0
       audioUrl.value = url
 
       const el = ensureAudio()
@@ -906,8 +945,19 @@ export const usePlayerStore = defineStore('player', () => {
       throw lastError || new Error('音频加载失败')
     } catch (e) {
       if (epoch !== loadEpoch) return
-      error.value = describePlaybackError(e)
       playing.value = false
+      // 暂停上一首时触发的 timeupdate 会把旧进度写回来
+      currentTime.value = 0
+      if (e instanceof SongUnavailableError) {
+        setUnavailable(song, true)
+        error.value = e.message
+        if (direction !== 0 && skippedInRow < queue.value.length - 1) {
+          skippedInRow += 1
+          void (direction > 0 ? next() : prev())
+        }
+        return
+      }
+      error.value = describePlaybackError(e)
     } finally {
       if (epoch === loadEpoch) {
         loading.value = false
@@ -975,7 +1025,8 @@ export const usePlayerStore = defineStore('player', () => {
       await playRandom()
       return
     }
-    currentIndex.value = (currentIndex.value + 1) % queue.value.length
+    currentIndex.value = stepIndex(1)
+    skipDirection = 1
     await loadAndPlay()
   }
 
@@ -985,13 +1036,15 @@ export const usePlayerStore = defineStore('player', () => {
       const back = shuffleBack.pop()
       if (back != null && back >= 0 && back < queue.value.length) {
         currentIndex.value = back
+        skipDirection = -1
         await loadAndPlay()
         return
       }
       await playRandom()
       return
     }
-    currentIndex.value = (currentIndex.value - 1 + queue.value.length) % queue.value.length
+    currentIndex.value = stepIndex(-1)
+    skipDirection = -1
     await loadAndPlay()
   }
 
@@ -1032,28 +1085,16 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function toggleShuffle(): void {
-    shuffle.value = !shuffle.value
-    persistPlayMode()
+    setPlayMode(playMode.value === 'shuffle' ? 'order' : 'shuffle')
   }
 
-  function cycleRepeat(): void {
-    repeat.value = repeat.value === 'off' ? 'all' : repeat.value === 'all' ? 'one' : 'off'
-    persistPlayMode()
+  function toggleRepeatOne(): void {
+    setPlayMode(playMode.value === 'one' ? 'order' : 'one')
   }
 
-  /** 手机端单按钮轮换：顺序播放 → 随机播放 → 单曲循环 */
+  /** 手机端单按钮轮换：列表循环 → 随机播放 → 单曲循环 */
   function cyclePlayMode(): void {
-    if (shuffle.value) {
-      shuffle.value = false
-      repeat.value = 'one'
-    } else if (repeat.value === 'one') {
-      repeat.value = 'off'
-      shuffle.value = false
-    } else {
-      shuffle.value = true
-      repeat.value = 'off'
-    }
-    persistPlayMode()
+    setPlayMode(playMode.value === 'order' ? 'shuffle' : playMode.value === 'shuffle' ? 'one' : 'order')
   }
 
   /** 退出登录时彻底停止播放并清空队列 */
@@ -1093,13 +1134,13 @@ export const usePlayerStore = defineStore('player', () => {
     muted,
     quality,
     shuffle,
-    repeat,
     title,
     artist,
     cover,
     hasQueue,
     progress,
     playMode,
+    isUnavailable,
     playSong,
     playQueue,
     loadAndPlay,
@@ -1112,7 +1153,7 @@ export const usePlayerStore = defineStore('player', () => {
     setQuality,
     toggleQuality,
     toggleShuffle,
-    cycleRepeat,
+    toggleRepeatOne,
     cyclePlayMode,
     stop
   }

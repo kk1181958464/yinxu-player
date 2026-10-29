@@ -7,7 +7,6 @@ import {
   PhPause,
   PhPlay,
   PhQueue,
-  PhRepeat,
   PhRepeatOnce,
   PhShuffle,
   PhSkipBack,
@@ -22,6 +21,7 @@ import { usePlayerStore } from '../stores/player'
 import { formatClock } from '../utils/format'
 import { songTitle, songArtist, songCover, fetchLyricText } from '../api/kugou'
 import { parseLyric, type LyricLine } from '../utils/lyric'
+import { useLyricAutoScroll } from '../composables/useLyricAutoScroll'
 
 const player = usePlayerStore()
 const router = useRouter()
@@ -61,12 +61,6 @@ const volumeIcon = computed(() => {
   if (player.muted || player.volume === 0) return PhSpeakerSlash
   if (player.volume < 0.5) return PhSpeakerLow
   return PhSpeakerHigh
-})
-
-const repeatTitle = computed(() => {
-  if (player.repeat === 'one') return '单曲循环'
-  if (player.repeat === 'all') return '列表循环'
-  return '顺序播放'
 })
 
 function onProgressInput(e: Event): void {
@@ -173,21 +167,7 @@ watch(
   { immediate: true }
 )
 
-watch(activeLyricIndex, async (index) => {
-  if (!lyricsOpen.value || index < 0 || !lyricViewport.value) return
-  await nextTick()
-  const view = lyricViewport.value
-  const line = view.querySelectorAll<HTMLElement>('.lyrics-line')[index]
-  if (!view || !line) return
-  const viewRect = view.getBoundingClientRect()
-  const lineRect = line.getBoundingClientRect()
-  const top =
-    view.scrollTop +
-    (lineRect.top - viewRect.top) -
-    view.clientHeight / 2 +
-    line.clientHeight / 2
-  view.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-})
+useLyricAutoScroll(lyricViewport, '.lyrics-line', activeLyricIndex, () => lyricsOpen.value)
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
@@ -229,11 +209,11 @@ onBeforeUnmount(() => {
       <div class="np-controls">
         <button
           class="icon-btn"
-          :class="{ on: player.shuffle }"
+          :class="{ on: player.playMode === 'shuffle' }"
           type="button"
           title="随机播放"
           aria-label="随机播放"
-          :aria-pressed="player.shuffle"
+          :aria-pressed="player.playMode === 'shuffle'"
           @click="player.toggleShuffle()"
         >
           <PhShuffle :size="16" />
@@ -272,14 +252,14 @@ onBeforeUnmount(() => {
         </button>
         <button
           class="icon-btn"
-          :class="{ on: player.repeat !== 'off' }"
+          :class="{ on: player.playMode === 'one' }"
           type="button"
-          :title="repeatTitle"
-          :aria-label="repeatTitle"
-          @click="player.cycleRepeat()"
+          title="单曲循环"
+          aria-label="单曲循环"
+          :aria-pressed="player.playMode === 'one'"
+          @click="player.toggleRepeatOne()"
         >
-          <PhRepeatOnce v-if="player.repeat === 'one'" :size="16" />
-          <PhRepeat v-else :size="16" />
+          <PhRepeatOnce :size="16" />
         </button>
       </div>
 

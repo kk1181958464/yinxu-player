@@ -383,6 +383,14 @@ function pickUrl(payload: Record<string, unknown>): string {
 
 export type AudioQuality = 128 | 320
 
+/** 酷狗已下架该音频（/song/url 返回 status 3 且无地址），重试也拿不到 */
+export class SongUnavailableError extends Error {
+  constructor() {
+    super('这首歌已下架，暂时无法播放')
+    this.name = 'SongUnavailableError'
+  }
+}
+
 /** 获取播放地址；高品失败时自动回退标准 */
 export async function fetchSongUrl(
   song: SongItem,
@@ -400,7 +408,8 @@ export async function fetchSongUrl(
         hash,
         album_id: song.album_id || 0,
         album_audio_id: song.album_audio_id || 0,
-        free_part: freePart ? 1 : 0,
+        // 服务端按真值判断，传 "0" 也会被当成 1，所以不要试听时直接省略
+        ...(freePart ? { free_part: 1 } : {}),
         quality: q
       }
     })
@@ -411,7 +420,9 @@ export async function fetchSongUrl(
     if (data?.status === 0 && data?.error) {
       throw new Error(String(data.error))
     }
-    return pickUrl(data)
+    const url = pickUrl(data)
+    if (!url && Number(data?.status) === 3) throw new SongUnavailableError()
+    return url
   }
 
   if (quality === 320 && !song.hq_hash) {
@@ -426,6 +437,30 @@ export async function fetchSongUrl(
   } catch (error) {
     if (quality === 320) return requestUrl(128)
     throw error
+  }
+}
+
+/** 歌单里部分老歌没有封面，用权益接口里的 info.image 补上（原地修改） */
+export async function fillMissingCovers(songs: SongItem[]): Promise<void> {
+  const missing = songs.filter((s) => s.hash && !songCover(s))
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50)
+    const data = await getApi<{ data?: Array<{ hash?: string; info?: { image?: string } }> }>(
+      '/privilege/lite',
+      {
+        hash: chunk.map((s) => s.hash).join(','),
+        album_id: chunk.map((s) => s.album_id || 0).join(','),
+        qualities: '128'
+      }
+    )
+    const images = new Map<string, string>()
+    for (const item of data?.data || []) {
+      if (item?.hash && item.info?.image) images.set(item.hash.toUpperCase(), item.info.image)
+    }
+    for (const s of chunk) {
+      const image = images.get(s.hash.toUpperCase())
+      if (image) s.album_cover = secureImageUrl(image.replace('{size}', '240'))
+    }
   }
 }
 

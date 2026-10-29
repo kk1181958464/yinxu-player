@@ -1,5 +1,5 @@
 /* ============================================================
-   云音 · Apple Music 风格桌面端
+   音序 · Apple Music 风格桌面端
    ------------------------------------------------------------
    形状规则：交互控件（按钮/输入分段）用胶囊或 8-10px，
    封面统一 4-10px，面板 14-18px。所有颜色取自下方 token。
@@ -154,6 +154,13 @@ a {
 
 .cover img.loaded {
   opacity: 1;
+}
+
+.cover img.cover-prev {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  transition: none;
 }
 
 .cover-fallback {
@@ -1151,6 +1158,25 @@ a {
 
 .track-row.current .track-name {
   color: var(--accent);
+}
+
+.track-row.unavailable .track-col-main,
+.track-row.unavailable .track-col-album,
+.track-row.unavailable .track-col-time {
+  opacity: 0.4;
+}
+
+.track-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 15px;
+  vertical-align: 1px;
+  color: var(--text-3);
 }
 
 .track-col-index {
@@ -2228,14 +2254,16 @@ button.now-playing:not(:disabled):hover .np-title {
 
 .lyrics-line {
   margin: 0;
-  padding: 5px 0;
-  font-size: 13px;
-  line-height: 1.7;
+  padding: 2px 0;
+  font-size: 16px;
+  line-height: 1.6;
   color: var(--text-3);
   cursor: pointer;
+  /* 字号固定为当前行大小，非当前行用 scale 缩小：过渡只走合成层，不触发重排 */
+  transform: scale(0.8125);
   transition:
-    color 0.18s var(--ease),
-    font-size 0.18s var(--ease);
+    color 0.24s var(--ease),
+    transform 0.36s var(--ease);
 }
 
 .lyrics-line:hover {
@@ -2244,8 +2272,8 @@ button.now-playing:not(:disabled):hover .np-title {
 
 .lyrics-line.active {
   color: var(--text);
-  font-size: 16px;
   font-weight: 600;
+  transform: none;
 }
 
 .lyrics-empty {
@@ -2403,14 +2431,15 @@ button.now-playing:not(:disabled):hover .np-title {
 
 .now-page-lyric-line {
   margin: 0;
-  padding: 8px 0;
-  font-size: 16px;
-  line-height: 1.8;
+  padding: 4px 0;
+  font-size: 22px;
+  line-height: 1.55;
   color: var(--text-3);
   cursor: pointer;
+  transform: scale(0.727);
   transition:
-    color 0.18s var(--ease),
-    font-size 0.18s var(--ease);
+    color 0.24s var(--ease),
+    transform 0.36s var(--ease);
 }
 
 .now-page-lyric-line:hover {
@@ -2419,8 +2448,8 @@ button.now-playing:not(:disabled):hover .np-title {
 
 .now-page-lyric-line.active {
   color: var(--text);
-  font-size: 22px;
   font-weight: 650;
+  transform: none;
 }
 
 .now-page-lyric-empty {

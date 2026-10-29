@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   PhCaretDown,
   PhCircleNotch,
   PhImage,
-  PhListNumbers,
   PhPause,
   PhPlay,
   PhQueue,
+  PhRepeat,
   PhRepeatOnce,
   PhShuffle,
   PhSkipBack,
@@ -21,6 +21,7 @@ import { usePlayerStore } from '../stores/player'
 import { formatClock } from '../utils/format'
 import { fetchLyricText, songArtist, songCover, songTitle } from '../api/kugou'
 import { parseLyric, type LyricLine } from '../utils/lyric'
+import { useLyricAutoScroll } from '../composables/useLyricAutoScroll'
 
 const player = usePlayerStore()
 const route = useRoute()
@@ -107,26 +108,12 @@ watch(
   { immediate: true }
 )
 
-watch([activeLyricIndex, showLyrics], async ([index, visible]) => {
-  if (!visible || index < 0 || !lyricBox.value) return
-  await nextTick()
-  const box = lyricBox.value
-  const line = box.querySelectorAll<HTMLElement>('.lyric-line')[index]
-  if (!box || !line) return
-  const boxRect = box.getBoundingClientRect()
-  const lineRect = line.getBoundingClientRect()
-  const top =
-    box.scrollTop +
-    (lineRect.top - boxRect.top) -
-    box.clientHeight / 2 +
-    line.clientHeight / 2
-  box.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-})
+useLyricAutoScroll(lyricBox, '.lyric-line', activeLyricIndex, () => expanded.value && showLyrics.value)
 
 const playModeTitle = computed(() => {
   if (player.playMode === 'shuffle') return '随机播放'
   if (player.playMode === 'one') return '单曲循环'
-  return '顺序播放'
+  return '列表循环'
 })
 
 function openSheet(): void {
@@ -260,7 +247,7 @@ watch(
     </button>
   </footer>
 
-  <Transition name="sheet">
+  <Transition name="sheet" :duration="{ enter: 380, leave: 260 }">
     <div v-if="expanded" class="player-sheet-layer">
       <section class="player-sheet" role="dialog" aria-modal="true" aria-label="正在播放">
         <header class="player-sheet-head">
@@ -283,49 +270,53 @@ watch(
         </header>
 
         <div class="player-sheet-stage">
-          <div v-show="!showLyrics" class="sheet-cover-view" @click="showLyrics = true">
-            <div class="player-sheet-art">
-              <CoverArt :src="player.cover" :alt="player.title" :icon-size="42" />
+          <Transition name="stage-fade">
+            <div v-show="!showLyrics" class="sheet-cover-view" @click="showLyrics = true">
+              <div class="player-sheet-art">
+                <CoverArt :src="player.cover" :alt="player.title" :icon-size="42" />
+              </div>
+
+              <div class="player-sheet-meta">
+                <h2>{{ player.title }}</h2>
+                <p>{{ player.artist }}</p>
+              </div>
+
+              <div v-if="player.error" class="player-sheet-error">{{ player.error }}</div>
+
+              <p class="sheet-cover-hint">
+                <PhTextAa :size="14" />
+                轻点封面查看歌词
+              </p>
             </div>
+          </Transition>
 
-            <div class="player-sheet-meta">
-              <h2>{{ player.title }}</h2>
-              <p>{{ player.artist }}</p>
-            </div>
-
-            <div v-if="player.error" class="player-sheet-error">{{ player.error }}</div>
-
-            <p class="sheet-cover-hint">
-              <PhTextAa :size="14" />
-              轻点封面查看歌词
-            </p>
-          </div>
-
-          <div v-show="showLyrics" class="sheet-lyrics-view" @click="showLyrics = false">
-            <header class="sheet-lyrics-head">
-              <span>歌词</span>
-              <button class="sheet-cover-back" type="button" @click.stop="showLyrics = false">
-                <PhImage :size="14" />
-                封面
-              </button>
-            </header>
-            <div ref="lyricBox" class="player-sheet-lyrics" aria-label="歌词">
-              <div v-if="lyricLoading" class="lyric-empty">歌词加载中…</div>
-              <div v-else-if="lyricError" class="lyric-empty">{{ lyricError }}</div>
-              <div v-else-if="!lyricLines.length" class="lyric-empty">暂无歌词</div>
-              <div v-else class="lyric-lines">
-                <p
-                  v-for="(line, i) in lyricLines"
-                  :key="`${line.time}-${i}`"
-                  class="lyric-line"
-                  :class="{ active: i === activeLyricIndex }"
-                  @click.stop="seekLyric(line.time)"
-                >
-                  {{ line.text }}
-                </p>
+          <Transition name="stage-fade">
+            <div v-show="showLyrics" class="sheet-lyrics-view" @click="showLyrics = false">
+              <header class="sheet-lyrics-head">
+                <span>歌词</span>
+                <button class="sheet-cover-back" type="button" @click.stop="showLyrics = false">
+                  <PhImage :size="14" />
+                  封面
+                </button>
+              </header>
+              <div ref="lyricBox" class="player-sheet-lyrics" aria-label="歌词">
+                <div v-if="lyricLoading" class="lyric-empty">歌词加载中…</div>
+                <div v-else-if="lyricError" class="lyric-empty">{{ lyricError }}</div>
+                <div v-else-if="!lyricLines.length" class="lyric-empty">暂无歌词</div>
+                <div v-else class="lyric-lines">
+                  <p
+                    v-for="(line, i) in lyricLines"
+                    :key="`${line.time}-${i}`"
+                    class="lyric-line"
+                    :class="{ active: i === activeLyricIndex }"
+                    @click.stop="seekLyric(line.time)"
+                  >
+                    {{ line.text }}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          </Transition>
         </div>
 
         <div class="player-sheet-progress">
@@ -356,7 +347,7 @@ watch(
             :aria-label="playModeTitle"
             @click="player.cyclePlayMode()"
           >
-            <PhListNumbers v-if="player.playMode === 'order'" :size="20" />
+            <PhRepeat v-if="player.playMode === 'order'" :size="20" />
             <PhShuffle v-else-if="player.playMode === 'shuffle'" :size="20" />
             <PhRepeatOnce v-else :size="20" />
           </button>
@@ -391,7 +382,7 @@ watch(
           </button>
         </div>
 
-        <Transition name="mobile-queue">
+        <Transition name="mobile-queue" :duration="250">
           <div v-if="queueOpen" class="mobile-queue-layer">
             <button
               class="mobile-queue-scrim"

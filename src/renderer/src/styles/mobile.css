@@ -916,20 +916,21 @@ html.mobile-layout .lyric-lines {
 
 html.mobile-layout .lyric-line {
   margin: 0;
-  padding: 5px 0;
-  font-size: 13px;
-  line-height: 1.55;
+  padding: 2px 0;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--text-3);
   cursor: pointer;
+  transform: scale(0.8125);
   transition:
-    color 0.18s var(--ease),
-    font-size 0.18s var(--ease);
+    color 0.24s var(--ease),
+    transform 0.36s var(--ease);
 }
 
 html.mobile-layout .lyric-line.active {
   color: var(--text);
-  font-size: 16px;
   font-weight: 600;
+  transform: none;
 }
 
 html.mobile-layout .lyric-empty {
@@ -1144,24 +1145,41 @@ html.mobile-layout .mobile-queue-leave-to .mobile-queue-panel {
   transform: translateY(100%);
 }
 
-html.mobile-layout .sheet-enter-active,
-html.mobile-layout .sheet-leave-active {
-  transition: opacity 0.2s var(--ease);
-}
-
 html.mobile-layout .sheet-enter-from,
 html.mobile-layout .sheet-leave-to {
   opacity: 0;
 }
 
-html.mobile-layout .sheet-enter-active .player-sheet,
+/* 全屏播放页从底部滑入：进入用接近 iOS 的减速曲线，退出更快 */
+html.mobile-layout .sheet-enter-active .player-sheet {
+  transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 html.mobile-layout .sheet-leave-active .player-sheet {
-  transition: transform 0.26s var(--ease);
+  transition: transform 0.26s cubic-bezier(0.4, 0, 1, 1);
+}
+
+html.mobile-layout .sheet-enter-active,
+html.mobile-layout .sheet-leave-active {
+  transition: opacity 0.26s var(--ease);
 }
 
 html.mobile-layout .sheet-enter-from .player-sheet,
 html.mobile-layout .sheet-leave-to .player-sheet {
-  transform: translateY(4%);
+  transform: translateY(100%);
+}
+
+html.mobile-layout .stage-fade-enter-active,
+html.mobile-layout .stage-fade-leave-active {
+  transition:
+    opacity 0.22s var(--ease),
+    transform 0.22s var(--ease);
+}
+
+html.mobile-layout .stage-fade-enter-from,
+html.mobile-layout .stage-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
 }
 
 /* ---------- 登录 ---------- */

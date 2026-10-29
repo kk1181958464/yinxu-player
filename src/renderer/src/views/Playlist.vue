@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { PhArrowClockwise, PhPlay, PhWarningCircle } from '@phosphor-icons/vue'
 import {
   fetchPlaylistTracks,
+  fillMissingCovers,
   type SongItem,
   songCover,
   songDurationSeconds,
@@ -50,6 +51,9 @@ async function load(): Promise<void> {
       type: listType.value,
       page: 1,
       pagesize: 300
+    })
+    void fillMissingCovers(songs.value).catch(() => {
+      /* 补封面失败不影响歌单 */
     })
   } catch (e) {
     error.value = e instanceof Error ? e.message : '歌单加载失败'

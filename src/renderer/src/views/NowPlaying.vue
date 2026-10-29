@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   PhCaretLeft
@@ -8,6 +8,7 @@ import CoverArt from '../components/CoverArt.vue'
 import { usePlayerStore } from '../stores/player'
 import { fetchLyricText } from '../api/kugou'
 import { parseLyric, type LyricLine } from '../utils/lyric'
+import { useLyricAutoScroll } from '../composables/useLyricAutoScroll'
 
 const player = usePlayerStore()
 const router = useRouter()
@@ -85,21 +86,7 @@ watch(
   { immediate: true }
 )
 
-watch(activeLyricIndex, async (index) => {
-  if (index < 0 || !lyricsViewport.value) return
-  await nextTick()
-  const view = lyricsViewport.value
-  const line = view.querySelectorAll<HTMLElement>('.now-page-lyric-line')[index]
-  if (!view || !line) return
-  const viewRect = view.getBoundingClientRect()
-  const lineRect = line.getBoundingClientRect()
-  const top =
-    view.scrollTop +
-    (lineRect.top - viewRect.top) -
-    view.clientHeight / 2 +
-    line.clientHeight / 2
-  view.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-})
+useLyricAutoScroll(lyricsViewport, '.now-page-lyric-line', activeLyricIndex)
 
 onBeforeUnmount(() => {
   lyricEpoch += 1
