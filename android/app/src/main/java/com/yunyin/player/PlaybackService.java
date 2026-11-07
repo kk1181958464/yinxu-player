@@ -16,6 +16,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.net.wifi.WifiManager;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -48,6 +50,8 @@ public class PlaybackService extends Service {
     private static final String CHANNEL_ID = "yinxu_playback";
     private static final int NOTIFICATION_ID = 4101;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    /** 切歌时 JS 需要联网取下一首地址，这段时间内不让 CPU/Wi-Fi 休眠 */
+    private static final long TRANSITION_WAKE_MS = 60_000;
 
     private static PlaybackService instance;
     private static ControlListener controlListener;
@@ -68,6 +72,11 @@ public class PlaybackService extends Service {
     private Bitmap artwork;
     private String loadedArtUrl = "";
     private final ExecutorService artExecutor = Executors.newSingleThreadExecutor();
+    private PowerManager.WakeLock wakeLock;
+    private WifiManager.WifiLock wifiLock;
+    private final Runnable releaseWifi = () -> {
+        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+    };
 
     public static void setControlListener(ControlListener listener) {
         controlListener = listener;
@@ -119,6 +128,12 @@ public class PlaybackService extends Service {
         MAIN.post(() -> running.applyPosition(positionMs));
     }
 
+    public static void keepAwakeForTransition() {
+        PlaybackService running = instance;
+        if (running == null) return;
+        MAIN.post(() -> running.keepAwake(TRANSITION_WAKE_MS));
+    }
+
     public static void stop(Context context) {
         if (context != null) {
             context.stopService(new Intent(context, PlaybackService.class));
@@ -143,6 +158,17 @@ public class PlaybackService extends Service {
         instance = this;
         notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         createChannel();
+
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm != null) {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Yinxu:transition");
+            wakeLock.setReferenceCounted(false);
+        }
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        if (wm != null) {
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Yinxu:stream");
+            wifiLock.setReferenceCounted(false);
+        }
 
         session = new MediaSession(this, "YinxuPlayback");
         session.setFlags(
@@ -237,6 +263,7 @@ public class PlaybackService extends Service {
         coverUrl = nextCover == null ? "" : nextCover;
         durationMs = Math.max(0, nextDuration);
         playing = nextPlaying;
+        syncWifiLock();
         positionMs = Math.max(0, nextPosition);
         maybeLoadArtwork();
         ensureForeground();
@@ -245,6 +272,7 @@ public class PlaybackService extends Service {
 
     private void applyState(boolean nextPlaying, long nextPosition, long nextDuration) {
         playing = nextPlaying;
+        syncWifiLock();
         positionMs = Math.max(0, nextPosition);
         if (nextDuration > 0) durationMs = nextDuration;
         ensureForeground();
@@ -404,7 +432,34 @@ public class PlaybackService extends Service {
         notificationManager.createNotificationChannel(channel);
     }
 
+    /** 切歌空档：短时持有 CPU 和 Wi-Fi 锁，超时自动释放 */
+    private void keepAwake(long ms) {
+        try {
+            if (wakeLock != null) wakeLock.acquire(ms);
+            if (wifiLock != null) wifiLock.acquire();
+            MAIN.removeCallbacks(releaseWifi);
+            if (!playing) MAIN.postDelayed(releaseWifi, ms);
+        } catch (Exception ignored) {
+            // 拿不到锁也不影响播放本身
+        }
+    }
+
+    /** 播放中一直持有 Wi-Fi 锁保证流式加载（CPU 由 MediaPlayer 的唤醒锁保持）；暂停后留一段宽限期 */
+    private void syncWifiLock() {
+        try {
+            MAIN.removeCallbacks(releaseWifi);
+            if (playing) {
+                if (wifiLock != null) wifiLock.acquire();
+            } else {
+                MAIN.postDelayed(releaseWifi, TRANSITION_WAKE_MS);
+            }
+        } catch (Exception ignored) {
+            // ignore
+        }
+    }
+
     private void dispatch(String action, long position) {
+        if (!"pause".equals(action) && !"stop".equals(action)) keepAwake(TRANSITION_WAKE_MS);
         final ControlListener listener = controlListener;
         if (listener == null) return;
         MAIN.post(() -> listener.onMediaControl(action, position));
@@ -447,6 +502,9 @@ public class PlaybackService extends Service {
     @Override
     public void onDestroy() {
         instance = null;
+        MAIN.removeCallbacks(releaseWifi);
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         if (session != null) {
             session.setActive(false);
             session.release();

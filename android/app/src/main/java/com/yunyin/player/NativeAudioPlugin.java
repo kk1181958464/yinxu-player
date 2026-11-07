@@ -2,6 +2,7 @@ package com.yunyin.player;
 
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.os.PowerManager;
 import android.os.Handler;
 import android.os.Looper;
 import com.getcapacitor.JSObject;
@@ -41,6 +42,8 @@ public class NativeAudioPlugin extends Plugin {
     private void ensurePlayer() {
         if (player != null) return;
         player = new MediaPlayer();
+        // 熄屏播放时保持 CPU 运行；两首歌之间的空档由 PlaybackService 的唤醒锁兜住
+        player.setWakeMode(getContext(), PowerManager.PARTIAL_WAKE_LOCK);
         player.setAudioAttributes(
             new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -49,6 +52,7 @@ public class NativeAudioPlugin extends Plugin {
         );
         player.setOnCompletionListener(mp -> {
             stopTick();
+            PlaybackService.keepAwakeForTransition();
             PlaybackService.updateState(getContext(), false, 0, (long) (safeDuration() * 1000));
             JSObject data = new JSObject();
             data.put("currentTime", 0);
@@ -58,7 +62,8 @@ public class NativeAudioPlugin extends Plugin {
         });
         player.setOnErrorListener((mp, what, extra) -> {
             stopTick();
-            PlaybackService.stop(getContext());
+            PlaybackService.keepAwakeForTransition();
+            PlaybackService.updateState(getContext(), false, 0, 0);
             String msg = "MediaPlayer error what=" + what + " extra=" + extra;
             if (pendingPlayCall != null) {
                 pendingPlayCall.reject(msg);
@@ -203,7 +208,7 @@ public class NativeAudioPlugin extends Plugin {
                 player.prepareAsync();
             } catch (Exception e) {
                 pendingPlayCall = null;
-                PlaybackService.stop(getContext());
+                PlaybackService.updateState(getContext(), false, 0, 0);
                 call.reject("play failed: " + e.getMessage());
             }
         });
@@ -253,12 +258,23 @@ public class NativeAudioPlugin extends Plugin {
         });
     }
 
+    /**
+     * 停止当前曲目。默认保留前台服务和 MediaSession：切歌时若把服务停掉，
+     * 安卓 12+ 不允许在后台重新拉起前台服务，熄屏后锁屏卡片和蓝牙按键就失效了。
+     * 只有 release=true（退出登录等）才真正结束服务。
+     */
     @PluginMethod
     public void stop(PluginCall call) {
+        boolean release = Boolean.TRUE.equals(call.getBoolean("release", false));
         getActivity().runOnUiThread(() -> {
             playGeneration++;
             resetPlayer();
-            PlaybackService.stop(getContext());
+            if (release) {
+                PlaybackService.stop(getContext());
+            } else {
+                PlaybackService.keepAwakeForTransition();
+                PlaybackService.updateState(getContext(), false, 0, 0);
+            }
             JSObject data = new JSObject();
             data.put("currentTime", 0);
             data.put("duration", 0);

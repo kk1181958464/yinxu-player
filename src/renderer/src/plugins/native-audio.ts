@@ -22,7 +22,8 @@ export interface NativeAudioPlugin {
   }): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
-  stop(): Promise<void>
+  /** release=true 时同时结束前台服务和锁屏/蓝牙媒体会话；切歌时不要传 */
+  stop(options?: { release?: boolean }): Promise<void>
   seek(options: { time: number }): Promise<void>
   setVolume(options: { volume: number; muted?: boolean }): Promise<void>
   getStatus(): Promise<NativeAudioStatus>

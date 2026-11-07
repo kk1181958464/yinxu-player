@@ -220,9 +220,11 @@ export const usePlayerStore = defineStore('player', () => {
         audioUnlocked = true
         return
       }
+      // 熄屏/后台时 resume() 可能一直不返回，会把切歌流程卡死；后台也用不到这条解锁
+      if (document.hidden) return
       if (!audioCtx) audioCtx = new AC()
       if (audioCtx.state === 'suspended') {
-        await audioCtx.resume()
+        await Promise.race([audioCtx.resume(), new Promise((r) => setTimeout(r, 300))])
       }
       // 短促无声音缓冲，进一步解锁部分 OEM WebView 媒体通路
       if (!audioUnlocked) {
@@ -518,11 +520,11 @@ export const usePlayerStore = defineStore('player', () => {
     )
   }
 
-  async function stopNativeAudio(): Promise<void> {
+  async function stopNativeAudio(release = false): Promise<void> {
     await detachNativeListeners()
     if (!usingNativeAudio) {
       try {
-        await NativeAudio.stop()
+        await NativeAudio.stop({ release })
       } catch {
         /* plugin may be absent on web/ios */
       }
@@ -530,7 +532,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
     usingNativeAudio = false
     try {
-      await NativeAudio.stop()
+      await NativeAudio.stop({ release })
     } catch {
       /* ignore */
     }
@@ -564,16 +566,7 @@ export const usePlayerStore = defineStore('player', () => {
       if (epoch !== loadEpoch || !usingNativeAudio) return
       console.warn('[player] native audio error', ev.message)
     })
-    const onMediaControl = await NativeAudio.addListener('mediaControl', (ev) => {
-      if (epoch !== loadEpoch || !usingNativeAudio) return
-      if (ev.action === 'next') void next()
-      else if (ev.action === 'prev') void prev()
-      else if (ev.action === 'seek' && typeof ev.position === 'number') seek(ev.position)
-      else if (ev.action === 'play' && !playing.value) toggle()
-      else if (ev.action === 'pause' && playing.value) toggle()
-      else if (ev.action === 'stop') stop()
-    })
-    nativeListeners = [onTime, onPlaying, onEnded, onError, onMediaControl]
+    nativeListeners = [onTime, onPlaying, onEnded, onError]
   }
 
   /** 原生 MediaPlayer 直连 URL（可播 http CDN）；超时则失败给下一候选 */
@@ -1103,7 +1096,7 @@ export const usePlayerStore = defineStore('player', () => {
     tryingSources = false
     cleanupMse()
     revokeObjectUrl()
-    void stopNativeAudio()
+    void stopNativeAudio(true)
     audioUrl.value = ''
     if (audio) {
       audio.pause()
@@ -1118,6 +1111,19 @@ export const usePlayerStore = defineStore('player', () => {
     duration.value = 0
     loading.value = false
     error.value = ''
+  }
+
+  // 锁屏卡片/通知栏/蓝牙按键全局监听：不能跟随单首歌绑定，否则切歌失败或走 HTML Audio 时按键就失效
+  if (isCapacitorNative()) {
+    void NativeAudio.addListener('mediaControl', (ev) => {
+      if (!current.value) return
+      if (ev.action === 'next') void next()
+      else if (ev.action === 'prev') void prev()
+      else if (ev.action === 'seek' && typeof ev.position === 'number') seek(ev.position)
+      else if (ev.action === 'play' && !playing.value) toggle()
+      // 部分蓝牙耳机摘下时发 STOP，按暂停处理，不清空播放队列
+      else if ((ev.action === 'pause' || ev.action === 'stop') && playing.value) toggle()
+    })
   }
 
   return {
