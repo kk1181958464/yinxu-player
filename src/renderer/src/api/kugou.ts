@@ -381,13 +381,75 @@ export async function searchSongs(keywords: string, page = 1): Promise<SongItem[
 }
 
 /** 新歌速递（首页） */
-export async function fetchTopSongs(): Promise<SongItem[]> {
-  const { data } = await getClient().get('/top/song', { params: { pagesize: 20 } })
+export interface TopSongsPage {
+  songs: SongItem[]
+  page: number
+  pagesize: number
+  total: number
+}
+
+/** 新歌速递/全部新歌（带分页） */
+export async function fetchTopSongsPage(page = 1, pagesize = 20): Promise<TopSongsPage> {
+  const { data } = await getClient().get('/top/song', { params: { page, pagesize } })
   const list = Array.isArray(data?.data)
     ? data.data
     : data?.data?.song_list || data?.data?.list || []
-  if (!Array.isArray(list)) return []
-  return list.map((x: Record<string, unknown>) => normalizeSong(x))
+  return {
+    songs: Array.isArray(list)
+      ? list.map((x: Record<string, unknown>) => normalizeSong(x))
+      : [],
+    page,
+    pagesize,
+    total: Number(data?.total ?? 0) || 0
+  }
+}
+
+/** 新歌速递（兼容旧调用） */
+export async function fetchTopSongs(): Promise<SongItem[]> {
+  const result = await fetchTopSongsPage(1, 20)
+  return result.songs
+}
+
+/** 歌曲自带的 MV hash（搜索结果用 mvhash/mvdata，新歌用 video_hash） */
+export function songMvHash(song: SongItem): string {
+  const mvdata = Array.isArray(song.mvdata)
+    ? (song.mvdata[0] as Record<string, unknown> | undefined)
+    : undefined
+  return String(
+    song.video_hash ||
+      song.mvhash ||
+      song.MvHash ||
+      song.mv_hash ||
+      mvdata?.hash ||
+      ''
+  )
+}
+
+export function songMvId(song: SongItem): string {
+  const mvdata = Array.isArray(song.mvdata)
+    ? (song.mvdata[0] as Record<string, unknown> | undefined)
+    : undefined
+  return String(song.video_id || song.mv_id || song.MvID || mvdata?.id || '')
+}
+
+/** 获取 MV 播放地址（低清 mp4，足够在线预览） */
+export async function fetchMvUrl(hash: string): Promise<string> {
+  if (!hash) throw new Error('这首歌没有 MV')
+  const { data } = await getClient().get('/video/url', { params: { hash } })
+  if (Number(data?.status) === 0) {
+    throw new Error('这首歌暂时没有可播放的 MV')
+  }
+  const payload = data?.data as Record<string, unknown> | undefined
+  const key = hash.toLowerCase()
+  const entry = (payload?.[key] || payload?.[hash] || (Array.isArray(payload) ? payload[0] : null)) as
+    | Record<string, unknown>
+    | null
+  const backup = Array.isArray(entry?.backupdownurl)
+    ? String((entry?.backupdownurl as unknown[])[0] || '')
+    : ''
+  const url = String(entry?.downurl || backup || '')
+  if (!url) throw new Error('这首歌暂时没有可播放的 MV')
+  return url
 }
 
 function pickUrl(payload: Record<string, unknown>): string {

@@ -9,9 +9,11 @@ import {
   songArtist,
   songCover,
   songAlbum,
-  songDurationSeconds
+  songDurationSeconds,
+  songMvHash
 } from '../api/kugou'
 import { formatClock } from '../utils/format'
+import { useMvStore } from '../stores/mv'
 
 const props = withDefaults(
   defineProps<{
@@ -29,6 +31,7 @@ const emit = defineEmits<{
 }>()
 
 const player = usePlayerStore()
+const mv = useMvStore()
 
 const currentHash = computed(() => player.current?.hash || '')
 const hasActions = computed(() => props.showAdd || props.showDelete)
@@ -90,6 +93,17 @@ function activate(s: SongItem): void {
             <span class="track-name">
               {{ songTitle(s) }}
               <span v-if="player.isUnavailable(s)" class="track-badge">已下架</span>
+              <button
+                v-if="songMvHash(s)"
+                class="track-mv"
+                type="button"
+                title="播放 MV"
+                :aria-label="`播放 ${songTitle(s)} 的 MV`"
+                @click.stop="mv.open(s)"
+                @keydown.stop
+              >
+                MV
+              </button>
             </span>
             <span class="track-artist">{{ songArtist(s) }}</span>
           </span>

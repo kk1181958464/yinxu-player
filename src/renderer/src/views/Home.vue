@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { PhArrowClockwise, PhPlay, PhWarningCircle } from '@phosphor-icons/vue'
 import {
-  fetchTopSongs,
+  fetchTopSongsPage,
   type SongItem,
   songTitle,
   songArtist,
@@ -21,35 +21,72 @@ const app = useAppStore()
 const player = usePlayerStore()
 
 const songs = ref<SongItem[]>([])
+const featured = ref<SongItem[]>([])
 const loading = ref(true)
 const error = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+const pageLoading = ref(false)
+const pageError = ref('')
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const greetingText = computed(() => greeting())
 
-const hero = computed(() => songs.value[0])
-const shelf = computed(() => songs.value.slice(0, 6))
+const hero = computed(() => featured.value[0])
+const shelf = computed(() => featured.value.slice(0, 6))
 const heroCover = computed(() => (hero.value ? songCover(hero.value) : ''))
 const heroBackdrop = computed(() => (heroCover.value ? coverAt(heroCover.value, 480) : ''))
 
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
+  pageError.value = ''
+  page.value = 1
+  total.value = 0
   try {
-    songs.value = await fetchTopSongs()
+    const result = await fetchTopSongsPage(1, pageSize.value)
+    songs.value = result.songs
+    featured.value = result.songs
+    page.value = result.page
+    pageSize.value = result.pagesize
+    total.value = result.total
   } catch (e) {
     error.value = e instanceof Error ? e.message : '推荐加载失败'
     songs.value = []
+    featured.value = []
   } finally {
     loading.value = false
   }
 }
 
+async function goToPage(target: number): Promise<void> {
+  if (loading.value || pageLoading.value) return
+  const nextPage = Math.min(Math.max(1, target), pageCount.value)
+  if (nextPage === page.value) return
+  pageLoading.value = true
+  pageError.value = ''
+  try {
+    const result = await fetchTopSongsPage(nextPage, pageSize.value)
+    songs.value = result.songs
+    page.value = result.page
+    pageSize.value = result.pagesize
+    total.value = result.total
+    await nextTick()
+    document.querySelector('.home-all-songs')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  } catch (e) {
+    pageError.value = e instanceof Error ? e.message : '翻页失败'
+  } finally {
+    pageLoading.value = false
+  }
+}
+
 function playHero(): void {
-  if (hero.value) void player.playSong(hero.value, songs.value)
+  if (hero.value) void player.playSong(hero.value, featured.value)
 }
 
 function playShelfSong(song: SongItem): void {
-  void player.playSong(song, songs.value)
+  void player.playSong(song, featured.value)
 }
 
 function playAll(): void {
@@ -137,12 +174,34 @@ onMounted(load)
         </div>
       </section>
 
-      <section class="section">
+      <section class="section home-all-songs">
         <div class="section-head">
           <h2>全部新歌</h2>
-          <span class="section-meta">{{ songs.length }} 首</span>
+          <span class="section-meta">{{ total ? `共 ${total} 首` : `${songs.length} 首` }}</span>
         </div>
         <SongList :songs="songs" />
+        <nav v-if="songs.length && total > pageSize" class="search-pager home-pager" aria-label="全部新歌分页">
+          <button
+            class="btn btn-secondary"
+            type="button"
+            :disabled="page <= 1 || pageLoading"
+            @click="goToPage(page - 1)"
+          >
+            上一页
+          </button>
+          <span class="search-pager-info">
+            {{ pageLoading ? '加载中…' : `第 ${page} / ${pageCount} 页` }}
+          </span>
+          <button
+            class="btn btn-secondary"
+            type="button"
+            :disabled="page >= pageCount || pageLoading"
+            @click="goToPage(page + 1)"
+          >
+            下一页
+          </button>
+        </nav>
+        <p v-if="pageError" class="form-error search-page-error">{{ pageError }}</p>
       </section>
     </template>
 
