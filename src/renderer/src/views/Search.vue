@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   PhArrowClockwise,
@@ -8,7 +8,7 @@ import {
   PhX
 } from '@phosphor-icons/vue'
 import {
-  searchSongs,
+  searchSongsPage,
   fetchUserPlaylists,
   addSongToPlaylist,
   songTitle,
@@ -29,6 +29,13 @@ const error = ref('')
 const searched = ref('')
 const recent = ref<string[]>(loadRecent())
 const inputEl = ref<HTMLInputElement | null>(null)
+
+const page = ref(1)
+const pageSize = ref(30)
+const total = ref(0)
+const pageLoading = ref(false)
+const pageError = ref('')
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const addTarget = ref<SongItem | null>(null)
 const playlists = ref<PlaylistItem[]>([])
@@ -66,20 +73,53 @@ async function runSearch(raw: string): Promise<void> {
   if (!q) return
   const id = ++requestId
   loading.value = true
+  pageLoading.value = false
+  page.value = 1
+  total.value = 0
   error.value = ''
+  pageError.value = ''
   try {
-    const result = await searchSongs(q)
+    const result = await searchSongsPage(q, 1)
     if (id !== requestId) return
-    songs.value = result
+    songs.value = result.songs
     searched.value = q
-    if (result.length) saveRecent(q)
+    page.value = result.page
+    pageSize.value = result.pagesize || 30
+    total.value = result.total
+    if (result.songs.length) saveRecent(q)
   } catch (e) {
     if (id !== requestId) return
     songs.value = []
     searched.value = q
+    page.value = 1
+    total.value = 0
     error.value = e instanceof Error ? e.message : '搜索失败'
   } finally {
     if (id === requestId) loading.value = false
+  }
+}
+
+async function goToPage(target: number): Promise<void> {
+  if (!searched.value || loading.value || pageLoading.value) return
+  const nextPage = Math.min(Math.max(1, target), pageCount.value)
+  if (nextPage === page.value) return
+  const id = ++requestId
+  pageLoading.value = true
+  pageError.value = ''
+  try {
+    const result = await searchSongsPage(searched.value, nextPage, pageSize.value)
+    if (id !== requestId) return
+    songs.value = result.songs
+    page.value = result.page
+    pageSize.value = result.pagesize || pageSize.value
+    total.value = result.total
+    await nextTick()
+    document.querySelector('.page-head')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  } catch (e) {
+    if (id !== requestId) return
+    pageError.value = e instanceof Error ? e.message : '翻页失败'
+  } finally {
+    if (id === requestId) pageLoading.value = false
   }
 }
 
@@ -87,7 +127,10 @@ function clearAll(): void {
   keyword.value = ''
   songs.value = []
   error.value = ''
+  pageError.value = ''
   searched.value = ''
+  page.value = 1
+  total.value = 0
   if (route.query.q) void router.replace({ name: 'search' })
   void nextTick(() => inputEl.value?.focus())
 }
@@ -151,8 +194,12 @@ watch(keyword, (value) => {
   if (!q) {
     songs.value = []
     error.value = ''
+    pageError.value = ''
     searched.value = ''
     loading.value = false
+    pageLoading.value = false
+    page.value = 1
+    total.value = 0
     return
   }
   debounce = setTimeout(() => {
@@ -216,7 +263,7 @@ onBeforeUnmount(() => {
     <template v-else-if="searched">
       <div class="section-head">
         <h2>搜索结果</h2>
-        <span class="section-meta">{{ songs.length ? `${songs.length} 首` : '无结果' }}</span>
+        <span class="section-meta">{{ total ? `共 ${total} 首` : songs.length ? `${songs.length} 首` : '无结果' }}</span>
       </div>
       <SongList
         v-if="songs.length"
@@ -225,6 +272,28 @@ onBeforeUnmount(() => {
         empty-text="没有找到相关歌曲，试试别的关键词"
         @add-song="openAdd"
       />
+      <nav v-if="total > pageSize" class="search-pager" aria-label="搜索结果分页">
+        <button
+          class="btn btn-secondary"
+          type="button"
+          :disabled="page <= 1 || loading || pageLoading"
+          @click="goToPage(page - 1)"
+        >
+          上一页
+        </button>
+        <span class="search-pager-info">
+          {{ pageLoading ? '加载中…' : `第 ${page} / ${pageCount} 页` }}
+        </span>
+        <button
+          class="btn btn-secondary"
+          type="button"
+          :disabled="page >= pageCount || loading || pageLoading"
+          @click="goToPage(page + 1)"
+        >
+          下一页
+        </button>
+      </nav>
+      <p v-if="pageError" class="form-error search-page-error">{{ pageError }}</p>
       <section v-else class="state-panel">
         <PhMagnifyingGlass :size="26" />
         <h2>没有找到「{{ searched }}」</h2>

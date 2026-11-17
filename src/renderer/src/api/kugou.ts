@@ -345,13 +345,39 @@ export async function registerDev(): Promise<void> {
 }
 
 /** 搜索歌曲 */
-export async function searchSongs(keywords: string, page = 1): Promise<SongItem[]> {
+export interface SearchResultPage {
+  songs: SongItem[]
+  page: number
+  pagesize: number
+  total: number
+}
+
+/** 搜索歌曲（带总数和分页信息） */
+export async function searchSongsPage(
+  keywords: string,
+  page = 1,
+  pagesize = 30
+): Promise<SearchResultPage> {
   const { data } = await getClient().get('/search', {
-    params: { keywords, page, pagesize: 30, type: 'song' }
+    params: { keywords, page, pagesize, type: 'song' }
   })
-  const list = data?.data?.lists || data?.data?.info || data?.data?.songs || data?.data || []
-  if (!Array.isArray(list)) return []
-  return list.map((x: Record<string, unknown>) => normalizeSong(x))
+  const payload = (data?.data || {}) as Record<string, unknown>
+  const list = payload.lists || payload.info || payload.songs || data?.data || []
+  const songs = Array.isArray(list)
+    ? list.map((x: Record<string, unknown>) => normalizeSong(x))
+    : []
+  return {
+    songs,
+    page: Number(payload.page ?? page) || page,
+    pagesize: Number(payload.pagesize ?? pagesize) || pagesize,
+    total: Number(payload.total ?? 0) || 0
+  }
+}
+
+/** 搜索歌曲（兼容旧调用，只返回当前页歌曲） */
+export async function searchSongs(keywords: string, page = 1): Promise<SongItem[]> {
+  const result = await searchSongsPage(keywords, page)
+  return result.songs
 }
 
 /** 新歌速递（首页） */
