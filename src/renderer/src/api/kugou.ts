@@ -1044,6 +1044,39 @@ export async function fetchUserPlaylists(page = 1, pagesize = 50): Promise<Playl
   return extractArrayPayload(data).map((x) => normalizePlaylist(x))
 }
 
+/** 把歌曲添加到用户歌单；data 格式：歌名|hash|album_id|mixsongid */
+export async function addSongToPlaylist(
+  listid: string | number,
+  song: SongItem
+): Promise<void> {
+  if (!song.hash) throw new Error('这首歌缺少 hash，无法添加到歌单')
+  const data = [
+    songTitle(song),
+    song.hash,
+    song.album_id ?? 0,
+    song.album_audio_id ?? 0
+  ].join('|')
+  const { data: body } = await getClient().post('/playlist/tracks/add', { listid, data })
+  const result = (body || {}) as Record<string, unknown>
+  if (result?.status === 0 || (result?.error_code != null && Number(result.error_code) !== 0)) {
+    throw new Error(apiFailMessage(result, '添加到歌单失败'))
+  }
+}
+
+/** 从用户歌单删除歌曲，fileids 对应歌单条目的 fileid */
+export async function removePlaylistTracks(
+  listid: string | number,
+  fileids: string | number | Array<string | number>
+): Promise<void> {
+  const ids = Array.isArray(fileids) ? fileids.join(',') : String(fileids)
+  if (!listid || !ids) throw new Error('缺少歌单或文件 ID，无法删除')
+  const { data: body } = await getClient().post('/playlist/tracks/del', { listid, fileids: ids })
+  const result = (body || {}) as Record<string, unknown>
+  if (result?.status === 0 || (result?.error_code != null && Number(result.error_code) !== 0)) {
+    throw new Error(apiFailMessage(result, '从歌单删除失败'))
+  }
+}
+
 export interface FetchPlaylistTracksOpts {
   listid?: string | number
   globalCollectionId?: string

@@ -7,7 +7,14 @@ import {
   PhWarningCircle,
   PhX
 } from '@phosphor-icons/vue'
-import { searchSongs, type SongItem } from '../api/kugou'
+import {
+  searchSongs,
+  fetchUserPlaylists,
+  addSongToPlaylist,
+  songTitle,
+  type SongItem,
+  type PlaylistItem
+} from '../api/kugou'
 import SongList from '../components/SongList.vue'
 
 const RECENT_KEY = 'kugou_recent_searches'
@@ -22,6 +29,13 @@ const error = ref('')
 const searched = ref('')
 const recent = ref<string[]>(loadRecent())
 const inputEl = ref<HTMLInputElement | null>(null)
+
+const addTarget = ref<SongItem | null>(null)
+const playlists = ref<PlaylistItem[]>([])
+const addLoading = ref(false)
+const addBusy = ref(false)
+const addError = ref('')
+const addSuccess = ref('')
 
 let debounce: ReturnType<typeof setTimeout> | null = null
 let requestId = 0
@@ -82,6 +96,45 @@ function pickRecent(q: string): void {
   keyword.value = q
   void runSearch(q)
   void router.replace({ name: 'search', query: { q } })
+}
+
+async function openAdd(song: SongItem): Promise<void> {
+  addTarget.value = song
+  addError.value = ''
+  addSuccess.value = ''
+  addLoading.value = true
+  try {
+    if (!playlists.value.length) {
+      playlists.value = await fetchUserPlaylists()
+    }
+    if (!playlists.value.length) addError.value = '还没有可用的歌单'
+  } catch (e) {
+    addError.value = e instanceof Error ? e.message : '加载歌单失败'
+  } finally {
+    addLoading.value = false
+  }
+}
+
+function closeAdd(): void {
+  if (addBusy.value) return
+  addTarget.value = null
+}
+
+async function choosePlaylist(playlist: PlaylistItem): Promise<void> {
+  if (!addTarget.value || addBusy.value) return
+  addBusy.value = true
+  addError.value = ''
+  try {
+    await addSongToPlaylist(playlist.listid, addTarget.value)
+    addSuccess.value = `已添加到「${playlist.name}」`
+    window.setTimeout(() => {
+      if (addSuccess.value) closeAdd()
+    }, 700)
+  } catch (e) {
+    addError.value = e instanceof Error ? e.message : '添加到歌单失败'
+  } finally {
+    addBusy.value = false
+  }
 }
 
 watch(
@@ -168,7 +221,9 @@ onBeforeUnmount(() => {
       <SongList
         v-if="songs.length"
         :songs="songs"
+        show-add
         empty-text="没有找到相关歌曲，试试别的关键词"
+        @add-song="openAdd"
       />
       <section v-else class="state-panel">
         <PhMagnifyingGlass :size="26" />
@@ -202,4 +257,51 @@ onBeforeUnmount(() => {
       </section>
     </template>
   </div>
+
+  <Teleport to="body">
+    <div v-if="addTarget" class="playlist-picker-layer" @click.self="closeAdd">
+      <section
+        class="playlist-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="playlist-picker-title"
+      >
+        <header class="playlist-picker-head">
+          <div>
+            <h3 id="playlist-picker-title">添加到歌单</h3>
+            <p>{{ songTitle(addTarget) }}</p>
+          </div>
+          <button class="icon-btn" type="button" aria-label="关闭" @click="closeAdd">
+            <PhX :size="16" />
+          </button>
+        </header>
+
+        <div v-if="addLoading" class="playlist-picker-state">正在加载歌单…</div>
+        <div v-else-if="playlists.length" class="playlist-picker-list">
+          <button
+            v-for="p in playlists"
+            :key="p.listid"
+            class="playlist-picker-row"
+            type="button"
+            :disabled="addBusy"
+            @click="choosePlaylist(p)"
+          >
+            <span class="playlist-picker-art">
+              <img v-if="p.cover" :src="p.cover" alt="" />
+              <span v-else>♪</span>
+            </span>
+            <span class="playlist-picker-text">
+              <strong>{{ p.name }}</strong>
+              <small>{{ p.count }} 首</small>
+            </span>
+            <span class="playlist-picker-add">{{ addBusy ? '添加中…' : '添加' }}</span>
+          </button>
+        </div>
+        <div v-else class="playlist-picker-state">还没有可用的歌单</div>
+
+        <p v-if="addError" class="form-error">{{ addError }}</p>
+        <p v-if="addSuccess" class="playlist-picker-success">{{ addSuccess }}</p>
+      </section>
+    </div>
+  </Teleport>
 </template>

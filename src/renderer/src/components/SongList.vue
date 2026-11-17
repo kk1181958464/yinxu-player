@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { PhClock, PhPlay } from '@phosphor-icons/vue'
+import { PhClock, PhPlay, PhPlus, PhTrash } from '@phosphor-icons/vue'
 import CoverArt from './CoverArt.vue'
 import { usePlayerStore } from '../stores/player'
 import {
@@ -17,13 +17,21 @@ const props = withDefaults(
   defineProps<{
     songs: SongItem[]
     emptyText?: string
+    showAdd?: boolean
+    showDelete?: boolean
   }>(),
-  { emptyText: '这里还没有歌曲' }
+  { emptyText: '这里还没有歌曲', showAdd: false, showDelete: false }
 )
+
+const emit = defineEmits<{
+  (e: 'add-song', song: SongItem): void
+  (e: 'delete-song', song: SongItem): void
+}>()
 
 const player = usePlayerStore()
 
 const currentHash = computed(() => player.current?.hash || '')
+const hasActions = computed(() => props.showAdd || props.showDelete)
 
 function isPlaying(s: SongItem): boolean {
   return s.hash === currentHash.value && player.playing
@@ -48,12 +56,13 @@ function activate(s: SongItem): void {
     <p>{{ emptyText }}</p>
   </div>
 
-  <div v-else class="track-table">
+  <div v-else class="track-table" :class="{ 'with-actions': hasActions }">
     <div class="track-head" aria-hidden="true">
       <span class="track-col-index">#</span>
       <span class="track-col-main">标题</span>
       <span class="track-col-album">专辑</span>
       <span class="track-col-time"><PhClock :size="13" /></span>
+      <span v-if="hasActions" class="track-col-action" />
     </div>
 
     <div class="track-list">
@@ -88,6 +97,30 @@ function activate(s: SongItem): void {
 
         <span class="track-col-album" :title="songAlbum(s)">{{ songAlbum(s) }}</span>
         <span class="track-col-time">{{ durationText(s) }}</span>
+        <span v-if="hasActions" class="track-col-action">
+          <button
+            v-if="showAdd"
+            class="track-action"
+            type="button"
+            title="添加到歌单"
+            :aria-label="`把 ${songTitle(s)} 添加到歌单`"
+            @click.stop="emit('add-song', s)"
+            @keydown.stop
+          >
+            <PhPlus :size="15" />
+          </button>
+          <button
+            v-if="showDelete"
+            class="track-action danger"
+            type="button"
+            title="从歌单删除"
+            :aria-label="`从歌单删除 ${songTitle(s)}`"
+            @click.stop="emit('delete-song', s)"
+            @keydown.stop
+          >
+            <PhTrash :size="15" />
+          </button>
+        </span>
       </div>
     </div>
   </div>

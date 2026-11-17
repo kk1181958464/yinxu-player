@@ -4,7 +4,9 @@ import { useRoute } from 'vue-router'
 import { PhArrowClockwise, PhPlay, PhWarningCircle } from '@phosphor-icons/vue'
 import {
   fetchPlaylistTracks,
+  removePlaylistTracks,
   fillMissingCovers,
+  songTitle,
   type SongItem,
   songCover,
   songDurationSeconds,
@@ -21,6 +23,8 @@ const player = usePlayerStore()
 const songs = ref<SongItem[]>([])
 const loading = ref(true)
 const error = ref('')
+const deleteError = ref('')
+const deleting = ref(false)
 
 const title = computed(() => String(route.query.name || '歌单'))
 const listid = computed(() => String(route.query.listid || ''))
@@ -64,6 +68,30 @@ async function load(): Promise<void> {
 
 function playAll(): void {
   if (songs.value.length) void player.playQueue(songs.value, 0)
+}
+
+async function removeSong(song: SongItem): Promise<void> {
+  if (deleting.value) return
+  if (!listid.value) {
+    deleteError.value = '只有自己的歌单才能删除歌曲'
+    return
+  }
+  const fileid = Number(song.fileid)
+  if (!Number.isFinite(fileid) || fileid <= 0) {
+    deleteError.value = '这首歌缺少文件 ID，暂时无法删除'
+    return
+  }
+  if (!window.confirm(`从歌单删除《${songTitle(song)}》？`)) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await removePlaylistTracks(listid.value, fileid)
+    songs.value = songs.value.filter((item) => Number(item.fileid) !== fileid)
+  } catch (e) {
+    deleteError.value = e instanceof Error ? e.message : '删除失败'
+  } finally {
+    deleting.value = false
+  }
 }
 
 onMounted(load)
@@ -119,7 +147,14 @@ watch(
         </div>
       </header>
 
-      <SongList :songs="songs" empty-text="这个歌单还没有歌曲" />
+      <p v-if="deleteError" class="form-error">{{ deleteError }}</p>
+
+      <SongList
+        :songs="songs"
+        show-delete
+        empty-text="这个歌单还没有歌曲"
+        @delete-song="removeSong"
+      />
     </template>
   </div>
 </template>
