@@ -272,7 +272,7 @@ onBeforeUnmount(() => {
         empty-text="没有找到相关歌曲，试试别的关键词"
         @add-song="openAdd"
       />
-      <nav v-if="total > pageSize" class="search-pager" aria-label="搜索结果分页">
+      <nav v-if="songs.length && total > pageSize" class="search-pager" aria-label="搜索结果分页">
         <button
           class="btn btn-secondary"
           type="button"
@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
         </button>
       </nav>
       <p v-if="pageError" class="form-error search-page-error">{{ pageError }}</p>
-      <section v-else class="state-panel">
+      <section v-if="!songs.length" class="state-panel">
         <PhMagnifyingGlass :size="26" />
         <h2>没有找到「{{ searched }}」</h2>
         <p>换一个关键词，或检查是否有错别字。</p>
