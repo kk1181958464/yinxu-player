@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { PhArrowClockwise, PhPlay, PhWarningCircle } from '@phosphor-icons/vue'
 import {
@@ -44,18 +44,35 @@ const totalDuration = computed(() =>
   songs.value.reduce((sum, s) => sum + songDurationSeconds(s), 0)
 )
 
+function newestFirst(a: SongItem, b: SongItem): number {
+  const aAdded = Number(a.collecttime ?? 0)
+  const bAdded = Number(b.collecttime ?? 0)
+  if (aAdded || bAdded) return bAdded - aAdded
+  const aDate = Date.parse(String(a.publish_date || '')) || 0
+  const bDate = Date.parse(String(b.publish_date || '')) || 0
+  return bDate - aDate
+}
+
+function routeKey(): string {
+  return `${route.params.id || ''}|${route.query.listid || ''}|${route.query.gid || ''}`
+}
+
+let loadedKey = ''
+
 async function load(): Promise<void> {
+  loadedKey = routeKey()
   loading.value = true
   error.value = ''
   songs.value = []
   try {
-    songs.value = await fetchPlaylistTracks({
+    const list = await fetchPlaylistTracks({
       listid: listid.value || undefined,
       globalCollectionId: gid.value || undefined,
       type: listType.value,
       page: 1,
       pagesize: 300
     })
+    songs.value = list.slice().sort(newestFirst)
     void fillMissingCovers(songs.value).catch(() => {
       /* 补封面失败不影响歌单 */
     })
@@ -64,6 +81,11 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+function onPlaylistUpdated(event: Event): void {
+  const id = String((event as CustomEvent<{ listid?: string }>).detail?.listid || '')
+  if (id && id === listid.value) void load()
 }
 
 function playAll(): void {
@@ -94,10 +116,20 @@ async function removeSong(song: SongItem): Promise<void> {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  window.addEventListener('kugou:playlist-updated', onPlaylistUpdated)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('kugou:playlist-updated', onPlaylistUpdated)
+})
+
 watch(
   () => [route.params.id, route.query.listid, route.query.gid],
   () => {
+    if (route.name !== 'playlist') return
+    if (routeKey() === loadedKey) return
     void load()
   }
 )

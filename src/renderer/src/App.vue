@@ -24,12 +24,24 @@ const router = useRouter()
 const shell = ref<HTMLElement | null>(null)
 const desktop = isDesktopShell()
 let backHandler: { remove: () => void } | null = null
+const scrollMemory = new Map<string, number>()
+let scrollTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(
   () => route.fullPath,
-  () => {
-    shell.value?.querySelector('.content')?.scrollTo({ top: 0 })
-  }
+  (to, from) => {
+    const content = shell.value?.querySelector<HTMLElement>('.content')
+    if (!content) return
+    if (from) scrollMemory.set(from, content.scrollTop)
+    const target = scrollMemory.get(to) ?? 0
+    if (scrollTimer) clearTimeout(scrollTimer)
+    // 等 out-in 页面切换完成后再恢复列表页原来的滚动位置。
+    scrollTimer = setTimeout(() => {
+      shell.value?.querySelector<HTMLElement>('.content')?.scrollTo({ top: target })
+      scrollTimer = null
+    }, 180)
+  },
+  { flush: 'pre' }
 )
 
 watch(
@@ -101,7 +113,12 @@ onBeforeUnmount(() => {
     <main class="content">
       <RouterView v-slot="{ Component }">
         <Transition name="page" mode="out-in">
-          <component :is="Component" :key="route.path" />
+          <KeepAlive
+            :include="['Home', 'Search', 'Playlist', 'Library', 'Vip']"
+            :max="12"
+          >
+            <component :is="Component" :key="route.path" />
+          </KeepAlive>
         </Transition>
       </RouterView>
     </main>

@@ -169,6 +169,11 @@ async function choosePlaylist(playlist: PlaylistItem): Promise<void> {
   addError.value = ''
   try {
     await addSongToPlaylist(playlist.listid, addTarget.value)
+    window.dispatchEvent(
+      new CustomEvent('kugou:playlist-updated', {
+        detail: { listid: String(playlist.listid) }
+      })
+    )
     addSuccess.value = `已添加到「${playlist.name}」`
     window.setTimeout(() => {
       if (addSuccess.value) closeAdd()

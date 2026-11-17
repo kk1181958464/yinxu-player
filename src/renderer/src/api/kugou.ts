@@ -987,6 +987,7 @@ export interface PlaylistItem {
   cover: string
   count: number
   type: number
+  update_time?: number
 }
 
 function extractArrayPayload(data: unknown): Record<string, unknown>[] {
@@ -1027,7 +1028,8 @@ export function normalizePlaylist(raw: Record<string, unknown>): PlaylistItem {
   cover = secureImageUrl(cover)
   const count = Number(raw.count ?? raw.count_total ?? raw.song_count ?? raw.total ?? 0) || 0
   const type = Number(raw.type ?? raw.list_type ?? 0) || 0
-  return { listid, globalCollectionId, name, cover, count, type }
+  const update_time = Number(raw.update_time ?? raw.updateTime ?? 0) || 0
+  return { listid, globalCollectionId, name, cover, count, type, update_time }
 }
 
 function apiFailMessage(data: unknown, fallback: string): string {

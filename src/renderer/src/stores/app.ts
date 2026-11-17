@@ -154,7 +154,7 @@ export const useAppStore = defineStore('app', () => {
     try {
       const result = await fetchUserPlaylists(1, 50)
       if (epoch !== playlistsEpoch || !loggedIn.value) return
-      playlists.value = result
+      playlists.value = result.slice().sort((a, b) => (b.update_time || 0) - (a.update_time || 0))
     } catch (e) {
       if (epoch !== playlistsEpoch || !loggedIn.value) return
       playlists.value = []
