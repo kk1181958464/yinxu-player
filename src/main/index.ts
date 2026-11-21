@@ -238,13 +238,25 @@ function powerShellQuote(value: string): string {
   return value.replace(/'/g, "''")
 }
 
+function extractZip(zipPath: string, destination: string): void {
+  const zip = new AdmZip(zipPath)
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue
+    const relative = entry.entryName.replace(/\\/g, '/')
+    if (relative.startsWith('/') || relative.split('/').includes('..')) continue
+    const target = join(destination, relative)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, entry.getData())
+  }
+}
+
 function installUpdate(): void {
   if (!pendingUpdate?.zipPath) throw new Error('更新包尚未下载完成')
   const version = pendingUpdate.version
   const unpackDir = join(app.getPath('temp'), 'yinxu-update', `unpacked-${version}`)
   if (existsSync(unpackDir)) rmSync(unpackDir, { recursive: true, force: true })
   mkdirSync(unpackDir, { recursive: true })
-  new AdmZip(pendingUpdate.zipPath).extractAllTo(unpackDir, true)
+  extractZip(pendingUpdate.zipPath, unpackDir)
 
   const appAsar = join(unpackDir, 'app.asar')
   const fullExe = join(unpackDir, '音序.exe')
