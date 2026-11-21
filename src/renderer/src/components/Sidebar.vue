@@ -4,17 +4,20 @@ import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import {
   PhArrowClockwise,
   PhCrown,
+  PhDownloadSimple,
   PhHouse,
   PhMagnifyingGlass,
   PhSignOut
 } from '@phosphor-icons/vue'
 import CoverArt from './CoverArt.vue'
 import { useAppStore } from '../stores/app'
+import { useUpdateStore } from '../stores/update'
 import { useVipStore } from '../stores/vip'
 import type { PlaylistItem } from '../api/kugou'
 import { initialOf } from '../utils/format'
 
 const app = useAppStore()
+const update = useUpdateStore()
 const vip = useVipStore()
 const route = useRoute()
 const router = useRouter()
@@ -130,6 +133,16 @@ async function logout(): Promise<void> {
           <span class="side-account-meta">{{ vipMeta }}</span>
         </span>
       </RouterLink>
+      <button
+        class="mini-btn side-update-btn"
+        type="button"
+        title="检查更新"
+        aria-label="检查更新"
+        @click="update.openPanel()"
+      >
+        <PhDownloadSimple :size="15" />
+        <span v-if="update.hasUpdate" class="update-dot" aria-hidden="true" />
+      </button>
       <button class="mini-btn" type="button" title="退出登录" aria-label="退出登录" @click="logout">
         <PhSignOut :size="15" />
       </button>

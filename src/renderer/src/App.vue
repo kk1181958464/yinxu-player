@@ -9,6 +9,7 @@ import MobileTopBar from './components/MobileTopBar.vue'
 import MobilePlayerBar from './components/MobilePlayerBar.vue'
 import MobileTabBar from './components/MobileTabBar.vue'
 import MvPlayer from './components/MvPlayer.vue'
+import UpdatePanel from './components/UpdatePanel.vue'
 import Login from './views/Login.vue'
 import { useAppStore } from './stores/app'
 import { usePlayerStore } from './stores/player'
@@ -127,6 +128,7 @@ onBeforeUnmount(() => {
     <MobilePlayerBar v-if="player.hasQueue" />
     <MobileTabBar />
     <MvPlayer />
+    <UpdatePanel />
     <div v-if="vip.toast" class="app-toast" :class="'app-toast-' + vip.toast.level" role="status">
       <p>{{ vip.toast.text }}</p>
       <button class="icon-btn" type="button" aria-label="关闭提示" @click="vip.dismissToast()">

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain } from 'electron'
 import { join } from 'path'
+import { autoUpdater } from 'electron-updater'
 import { startApiServer, stopApiServer, API_PORT } from './api-server'
 
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true'
@@ -92,11 +93,70 @@ function ensureApiServer(): void {
     .catch((err) => console.error('[main] API server failed to start:', err))
 }
 
+let updaterStarted = false
+
+function sendUpdaterStatus(payload: Record<string, unknown>): void {
+  mainWindow?.webContents.send('updater-status', payload)
+}
+
+function setupUpdater(): void {
+  if (updaterStarted) return
+  updaterStarted = true
+
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.allowPrerelease = false
+  // Windows 包目前不带代码签名，关闭发布者签名校验，避免无法安装更新。
+  ;(autoUpdater as unknown as { verifyUpdateCodeSignature: boolean }).verifyUpdateCodeSignature =
+    false
+
+  autoUpdater.on('checking-for-update', () => sendUpdaterStatus({ state: 'checking' }))
+  autoUpdater.on('update-available', (info) =>
+    sendUpdaterStatus({ state: 'available', version: info.version })
+  )
+  autoUpdater.on('update-not-available', (info) =>
+    sendUpdaterStatus({ state: 'not-available', version: info.version })
+  )
+  autoUpdater.on('download-progress', (progress) =>
+    sendUpdaterStatus({
+      state: 'downloading',
+      percent: Math.round(progress.percent || 0)
+    })
+  )
+  autoUpdater.on('update-downloaded', (info) =>
+    sendUpdaterStatus({ state: 'downloaded', version: info.version })
+  )
+  autoUpdater.on('error', (error) =>
+    sendUpdaterStatus({ state: 'error', message: error.message || '检查更新失败' })
+  )
+
+  if (!app.isPackaged) return
+
+  // 启动后静默检查一次，之后每 6 小时检查一次。
+  setTimeout(() => {
+    void autoUpdater.checkForUpdates().catch((error) => {
+      sendUpdaterStatus({
+        state: 'error',
+        message: error instanceof Error ? error.message : '检查更新失败'
+      })
+    })
+  }, 8000)
+  setInterval(
+    () => {
+      void autoUpdater.checkForUpdates().catch(() => {
+        /* 静默检查失败不打扰用户 */
+      })
+    },
+    6 * 60 * 60 * 1000
+  )
+}
+
 app.setAppUserModelId('com.gina.kugou-player')
 
 app.whenReady().then(() => {
   createWindow()
   createTray()
+  setupUpdater()
   // 兜底：如果 ready-to-show 没有触发，也不能让 API 永远不启动。
   setTimeout(ensureApiServer, 1500)
 
@@ -138,4 +198,37 @@ ipcMain.handle('window-close', () => {
 
 ipcMain.handle('window-is-maximized', () => {
   return mainWindow?.isMaximized() ?? false
+})
+
+ipcMain.handle('updater-version', () => app.getVersion())
+
+ipcMain.handle('updater-check', async () => {
+  if (!app.isPackaged) {
+    return { state: 'error', message: '开发模式不检查更新，请使用安装包' }
+  }
+  try {
+    await autoUpdater.checkForUpdates()
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '检查更新失败'
+    sendUpdaterStatus({ state: 'error', message })
+    return { state: 'error', message }
+  }
+})
+
+ipcMain.handle('updater-download', async () => {
+  try {
+    await autoUpdater.downloadUpdate()
+    return { ok: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '下载更新失败'
+    sendUpdaterStatus({ state: 'error', message })
+    return { state: 'error', message }
+  }
+})
+
+ipcMain.handle('updater-install', () => {
+  // 让 IPC 返回后主进程再退出，避免渲染进程连接被提前断开。
+  setTimeout(() => autoUpdater.quitAndInstall(), 100)
+  return true
 })

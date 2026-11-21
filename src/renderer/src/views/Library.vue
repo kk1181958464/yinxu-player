@@ -4,17 +4,20 @@ import { useRouter, type RouteLocationRaw } from 'vue-router'
 import {
   PhArrowClockwise,
   PhCrown,
+  PhDownloadSimple,
   PhPlaylist,
   PhSignOut,
   PhWarningCircle
 } from '@phosphor-icons/vue'
 import MediaCard from '../components/MediaCard.vue'
 import { useAppStore } from '../stores/app'
+import { useUpdateStore } from '../stores/update'
 import { useVipStore } from '../stores/vip'
 import type { PlaylistItem } from '../api/kugou'
 import { initialOf } from '../utils/format'
 
 const app = useAppStore()
+const update = useUpdateStore()
 const vip = useVipStore()
 const router = useRouter()
 
@@ -85,6 +88,10 @@ onMounted(() => {
         </button>
         <button class="btn btn-ghost" type="button" @click="router.push({ name: 'vip' })">
           <PhCrown :size="15" /> 会员
+        </button>
+        <button class="btn btn-ghost" type="button" @click="update.openPanel()">
+          <PhDownloadSimple :size="15" /> 检查更新
+          <span v-if="update.hasUpdate" class="update-dot" aria-hidden="true" />
         </button>
         <button class="btn btn-ghost" type="button" @click="logout">
           <PhSignOut :size="15" /> 退出登录

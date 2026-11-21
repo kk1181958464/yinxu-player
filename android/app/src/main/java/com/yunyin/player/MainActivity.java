@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Must register before super.onCreate so Capacitor picks it up
         registerPlugin(NativeAudioPlugin.class);
+        registerPlugin(AppUpdaterPlugin.class);
         super.onCreate(savedInstanceState);
         if (this.bridge != null) {
             WebView webView = this.bridge.getWebView();

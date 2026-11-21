@@ -6,6 +6,13 @@ declare module '*.vue' {
   export default component
 }
 
+interface UpdaterStatus {
+  state: string
+  version?: string
+  percent?: number
+  message?: string
+}
+
 interface Window {
   kugou?: {
     getApiBase: () => Promise<string>
@@ -13,5 +20,12 @@ interface Window {
     windowMaximize: () => Promise<boolean>
     windowClose: () => Promise<void>
     windowIsMaximized: () => Promise<boolean>
+    updater?: {
+      version: () => Promise<string>
+      check: () => Promise<unknown>
+      download: () => Promise<unknown>
+      install: () => Promise<unknown>
+      onStatus: (callback: (status: UpdaterStatus) => void) => () => void
+    }
   }
 }
