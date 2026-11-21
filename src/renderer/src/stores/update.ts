@@ -81,6 +81,7 @@ export const useUpdateStore = defineStore('update', () => {
       message.value = `发现新版本 ${version}`
     } else if (state === 'not-available') {
       phase.value = 'latest'
+      latestVersion.value = version || currentVersion.value
       message.value = '已是最新版本'
     } else if (state === 'downloading') {
       phase.value = 'downloading'

@@ -78,7 +78,9 @@ async function primaryAction(): Promise<void> {
           <PhWarningCircle v-else-if="update.phase === 'error'" :size="18" />
           <PhDownloadSimple v-else :size="18" />
           <span>{{ phaseLabel }}</span>
-          <span v-if="update.message" class="update-message">{{ update.message }}</span>
+          <span v-if="update.message && update.message !== phaseLabel" class="update-message">
+            {{ update.message }}
+          </span>
         </div>
 
         <div v-if="update.phase === 'downloading'" class="update-progress">
