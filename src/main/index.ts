@@ -106,6 +106,7 @@ const UPDATE_UA = 'Yinxu-Windows-Updater'
 interface ZippedUpdate {
   version: string
   url: string
+  kind: 'app' | 'win'
   zipPath?: string
 }
 
@@ -168,15 +169,23 @@ async function findLatestUpdate(): Promise<ZippedUpdate | null> {
   const assets = Array.isArray(release.assets)
     ? (release.assets as Array<Record<string, unknown>>)
     : []
+  let fullPackage: ZippedUpdate | null = null
   for (const asset of assets) {
     const name = String(asset.name || '')
-    const match = name.match(/^Yinxu-(\d+\.\d+\.\d+)-win\.zip$/i)
+    const match = name.match(/^Yinxu-(\d+\.\d+\.\d+)-(app|win)\.zip$/i)
     if (!match) continue
     const url = String(asset.browser_download_url || '')
     if (!url) continue
-    return { version: match[1], url }
+    const candidate: ZippedUpdate = {
+      version: match[1],
+      url,
+      kind: match[2].toLowerCase() === 'app' ? 'app' : 'win'
+    }
+    // app.zip 只包含 app.asar，体积约为完整包的四分之一，优先下载。
+    if (candidate.kind === 'app') return candidate
+    fullPackage = candidate
   }
-  throw new Error('最新版本没有找到 Windows 更新包')
+  return fullPackage
 }
 
 async function checkForUpdates(): Promise<{ ok: boolean }> {
@@ -199,7 +208,7 @@ async function downloadUpdate(): Promise<void> {
   if (!pendingUpdate) throw new Error('请先检查更新')
   const dir = join(app.getPath('temp'), 'yinxu-update')
   mkdirSync(dir, { recursive: true })
-  const zipPath = join(dir, `Yinxu-${pendingUpdate.version}-win.zip`)
+  const zipPath = join(dir, `Yinxu-${pendingUpdate.version}-${pendingUpdate.kind}.zip`)
   if (existsSync(zipPath)) rmSync(zipPath, { force: true })
 
   sendUpdaterStatus({ state: 'downloading', percent: 0 })
@@ -246,22 +255,34 @@ function installUpdate(): void {
   mkdirSync(unpackDir, { recursive: true })
   new AdmZip(pendingUpdate.zipPath).extractAllTo(unpackDir, true)
 
-  if (!existsSync(join(unpackDir, '音序.exe'))) {
+  const appAsar = join(unpackDir, 'app.asar')
+  const fullExe = join(unpackDir, '音序.exe')
+  const installDir = dirname(app.getPath('exe'))
+  const exe = powerShellQuote(join(installDir, '音序.exe'))
+  let script: string
+
+  if (existsSync(appAsar)) {
+    // 轻量更新包只替换 app.asar，避免每次下载整个 Electron 运行时。
+    const source = powerShellQuote(appAsar)
+    const destination = powerShellQuote(join(installDir, 'resources', 'app.asar'))
+    script = [
+      'Start-Sleep -Milliseconds 1200',
+      `Copy-Item -Path '${source}' -Destination '${destination}' -Force`,
+      `Start-Process -FilePath '${exe}'`
+    ].join('\r\n')
+  } else if (existsSync(fullExe)) {
+    const source = powerShellQuote(unpackDir)
+    const destination = powerShellQuote(installDir)
+    script = [
+      'Start-Sleep -Milliseconds 1200',
+      `Copy-Item -Path (Join-Path '${source}' '*') -Destination '${destination}' -Recurse -Force`,
+      `Start-Process -FilePath '${exe}'`
+    ].join('\r\n')
+  } else {
     throw new Error('更新包内容不完整')
   }
 
-  const installDir = dirname(app.getPath('exe'))
   const scriptPath = join(app.getPath('temp'), 'yinxu-update', `apply-${version}.ps1`)
-  const source = powerShellQuote(unpackDir)
-  const destination = powerShellQuote(installDir)
-  const exe = powerShellQuote(join(installDir, '音序.exe'))
-  const script = [
-    'Start-Sleep -Milliseconds 1200',
-    `$source = '${source}'`,
-    `$destination = '${destination}'`,
-    "Copy-Item -Path (Join-Path $source '*') -Destination $destination -Recurse -Force",
-    `Start-Process -FilePath '${exe}'`
-  ].join('\r\n')
   writeFileSync(scriptPath, `\ufeff${script}`, 'utf8')
 
   spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
