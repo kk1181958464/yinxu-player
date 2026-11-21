@@ -98,8 +98,11 @@ async function logout(): Promise<void> {
       </div>
 
       <p v-else-if="app.playlistsError" class="side-hint side-hint-error">
-        歌单加载失败
-        <button class="link-btn" type="button" @click="app.loadPlaylists()">重试</button>
+        {{ app.authExpired ? '登录已过期' : '歌单加载失败' }}
+        <button v-if="app.authExpired" class="link-btn" type="button" @click="logout">
+          重新登录
+        </button>
+        <button v-else class="link-btn" type="button" @click="app.loadPlaylists()">重试</button>
       </p>
       <p v-else-if="!app.playlists.length" class="side-hint">暂无歌单，登录账号 创建后会出现在这里</p>
 

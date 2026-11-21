@@ -52,6 +52,7 @@ export const useAppStore = defineStore('app', () => {
   const playlists = ref<PlaylistItem[]>([])
   const playlistsLoading = ref(false)
   const playlistsError = ref('')
+  const authExpired = ref(false)
   let playlistsEpoch = 0
 
   const displayName = computed(() => nickname.value || '音乐爱好者')
@@ -151,6 +152,7 @@ export const useAppStore = defineStore('app', () => {
     const epoch = ++playlistsEpoch
     playlistsLoading.value = true
     playlistsError.value = ''
+    authExpired.value = false
     try {
       const result = await fetchUserPlaylists(1, 50)
       if (epoch !== playlistsEpoch || !loggedIn.value) return
@@ -158,7 +160,9 @@ export const useAppStore = defineStore('app', () => {
     } catch (e) {
       if (epoch !== playlistsEpoch || !loggedIn.value) return
       playlists.value = []
-      playlistsError.value = e instanceof Error ? e.message : '歌单加载失败'
+      const message = e instanceof Error ? e.message : '歌单加载失败'
+      authExpired.value = /2001[078]|登录|未登录|token/i.test(message)
+      playlistsError.value = authExpired.value ? '登录状态已失效，请重新登录' : message
     } finally {
       if (epoch === playlistsEpoch) playlistsLoading.value = false
     }
@@ -173,6 +177,7 @@ export const useAppStore = defineStore('app', () => {
     playlists.value = []
     playlistsError.value = ''
     playlistsLoading.value = false
+    authExpired.value = false
   }
 
   return {
@@ -187,6 +192,7 @@ export const useAppStore = defineStore('app', () => {
     playlists,
     playlistsLoading,
     playlistsError,
+    authExpired,
     bootstrap,
     retryBootstrap,
     refreshLogin,

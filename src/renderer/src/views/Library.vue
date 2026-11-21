@@ -108,9 +108,17 @@ onMounted(() => {
 
       <section v-else-if="app.playlistsError" class="state-panel">
         <PhWarningCircle :size="28" />
-        <h2>歌单同步失败</h2>
+        <h2>{{ app.authExpired ? '登录已过期' : '歌单同步失败' }}</h2>
         <p>{{ app.playlistsError }}</p>
-        <button class="btn btn-secondary" type="button" @click="app.loadPlaylists()">
+        <button
+          v-if="app.authExpired"
+          class="btn btn-secondary"
+          type="button"
+          @click="logout"
+        >
+          重新登录
+        </button>
+        <button v-else class="btn btn-secondary" type="button" @click="app.loadPlaylists()">
           <PhArrowClockwise :size="15" /> 重试
         </button>
       </section>
