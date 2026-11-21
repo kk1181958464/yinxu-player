@@ -22,6 +22,9 @@ win:
 nsis:
   shortcutName: 音序
   artifactName: Yinxu-${version}-setup.${ext}
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
 publish:
   provider: github
   owner: kk1181958464

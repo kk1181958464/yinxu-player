@@ -228,7 +228,7 @@ ipcMain.handle('updater-download', async () => {
 })
 
 ipcMain.handle('updater-install', () => {
-  // 让 IPC 返回后主进程再退出，避免渲染进程连接被提前断开。
-  setTimeout(() => autoUpdater.quitAndInstall(), 100)
+  // 静默安装并自动重启，避免 NSIS 安装窗口停在“音序 安装”等待。
+  setTimeout(() => autoUpdater.quitAndInstall(true, true), 100)
   return true
 })
