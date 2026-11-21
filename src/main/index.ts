@@ -1,8 +1,6 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain, net } from 'electron'
 import { dirname, join } from 'path'
 import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
-import { get as httpsGet } from 'https'
-import type { IncomingMessage } from 'http'
 import { spawn } from 'child_process'
 import AdmZip from 'adm-zip'
 import { startApiServer, stopApiServer, API_PORT } from './api-server'
@@ -133,35 +131,13 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-function requestUrl(url: string, redirects = 5): Promise<IncomingMessage> {
-  return new Promise((resolve, reject) => {
-    httpsGet(url, { headers: { 'User-Agent': UPDATE_UA } }, (response) => {
-      const location = response.headers.location
-      if (
-        response.statusCode &&
-        response.statusCode >= 300 &&
-        response.statusCode < 400 &&
-        location &&
-        redirects > 0
-      ) {
-        response.resume()
-        resolve(requestUrl(new URL(location, url).toString(), redirects - 1))
-        return
-      }
-      resolve(response)
-    }).on('error', reject)
-  })
-}
-
-async function requestJson(url: string): Promise<Record<string, unknown>> {
-  const response = await requestUrl(url)
-  if (response.statusCode !== 200) {
-    response.resume()
-    throw new Error(`GitHub 返回 ${response.statusCode}`)
-  }
-  let raw = ''
-  for await (const chunk of response) raw += chunk
-  return JSON.parse(raw) as Record<string, unknown>
+function requestJson(url: string): Promise<Record<string, unknown>> {
+  return net
+    .fetch(url, { headers: { 'User-Agent': UPDATE_UA, Accept: 'application/vnd.github+json' } })
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`)
+      return (await response.json()) as Record<string, unknown>
+    })
 }
 
 async function findLatestUpdate(): Promise<ZippedUpdate | null> {
@@ -212,35 +188,50 @@ async function downloadUpdate(): Promise<void> {
   if (existsSync(zipPath)) rmSync(zipPath, { force: true })
 
   sendUpdaterStatus({ state: 'downloading', percent: 0 })
-  const response = await requestUrl(pendingUpdate.url)
-  if (response.statusCode !== 200) {
-    response.resume()
-    throw new Error(`下载更新失败（HTTP ${response.statusCode}）`)
-  }
-  const total = Number(response.headers['content-length'] || 0)
-  let received = 0
-  let lastPercent = -1
-  const output = createWriteStream(zipPath)
-  response.on('data', (chunk: Buffer) => {
-    received += chunk.length
-    if (total > 0) {
-      const percent = Math.min(100, Math.round((received / total) * 100))
-      if (percent !== lastPercent) {
-        lastPercent = percent
-        sendUpdaterStatus({ state: 'downloading', percent })
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      if (existsSync(zipPath)) rmSync(zipPath, { force: true })
+      const response = await net.fetch(pendingUpdate.url, {
+        headers: { 'User-Agent': UPDATE_UA }
+      })
+      if (!response.ok) throw new Error(`下载更新失败（HTTP ${response.status}）`)
+      const total = Number(response.headers.get('content-length') || 0)
+      let received = 0
+      let lastPercent = -1
+      const output = createWriteStream(zipPath)
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('无法读取更新包')
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = Buffer.from(value)
+        received += chunk.length
+        output.write(chunk)
+        if (total > 0) {
+          const percent = Math.min(100, Math.round((received / total) * 100))
+          if (percent !== lastPercent) {
+            lastPercent = percent
+            sendUpdaterStatus({ state: 'downloading', percent })
+          }
+        }
+      }
+      await new Promise<void>((resolve, reject) => {
+        output.end(() => resolve())
+        output.on('error', reject)
+      })
+      if (!existsSync(zipPath) || received <= 0) throw new Error('更新包下载失败')
+      pendingUpdate.zipPath = zipPath
+      sendUpdaterStatus({ state: 'downloaded', version: pendingUpdate.version })
+      return
+    } catch (error) {
+      lastError = error
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 800))
       }
     }
-  })
-  await new Promise<void>((resolve, reject) => {
-    response.pipe(output)
-    output.on('finish', () => output.close(() => resolve()))
-    output.on('error', reject)
-    response.on('error', reject)
-  })
-
-  if (!existsSync(zipPath)) throw new Error('更新包下载失败')
-  pendingUpdate.zipPath = zipPath
-  sendUpdaterStatus({ state: 'downloaded', version: pendingUpdate.version })
+  }
+  throw lastError instanceof Error ? lastError : new Error('下载更新失败')
 }
 
 function powerShellQuote(value: string): string {
