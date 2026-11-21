@@ -140,28 +140,62 @@ function requestJson(url: string): Promise<Record<string, unknown>> {
     })
 }
 
-async function findLatestUpdate(): Promise<ZippedUpdate | null> {
-  const release = await requestJson(UPDATE_API)
-  const assets = Array.isArray(release.assets)
-    ? (release.assets as Array<Record<string, unknown>>)
-    : []
+async function findLatestUpdateFromHtml(): Promise<ZippedUpdate> {
+  const latest = await net.fetch('https://github.com/kk1181958464/yinxu-player/releases/latest', {
+    headers: { 'User-Agent': UPDATE_UA }
+  })
+  if (!latest.ok) throw new Error(`GitHub 返回 ${latest.status}`)
+  const tag = latest.url.split('/').filter(Boolean).pop() || ''
+  if (!tag) throw new Error('无法识别最新版本')
+  const assets = await net.fetch(
+    `https://github.com/kk1181958464/yinxu-player/releases/expanded_assets/${tag}`,
+    { headers: { 'User-Agent': UPDATE_UA } }
+  )
+  if (!assets.ok) throw new Error(`GitHub 返回 ${assets.status}`)
+  const html = await assets.text()
+  const pattern =
+    /href="([^"]*\/releases\/download\/[^"]*?Yinxu-(\d+\.\d+\.\d+)-(app|win)\.zip[^"]*)"/g
   let fullPackage: ZippedUpdate | null = null
-  for (const asset of assets) {
-    const name = String(asset.name || '')
-    const match = name.match(/^Yinxu-(\d+\.\d+\.\d+)-(app|win)\.zip$/i)
-    if (!match) continue
-    const url = String(asset.browser_download_url || '')
-    if (!url) continue
-    const candidate: ZippedUpdate = {
-      version: match[1],
-      url,
-      kind: match[2].toLowerCase() === 'app' ? 'app' : 'win'
-    }
-    // app.zip 只包含 app.asar，体积约为完整包的四分之一，优先下载。
-    if (candidate.kind === 'app') return candidate
+  for (const match of html.matchAll(pattern)) {
+    const href = match[1].replace(/&amp;/g, '&')
+    const version = match[2]
+    const kind = match[3].toLowerCase() === 'app' ? 'app' : 'win'
+    const url = new URL(href, 'https://github.com').toString()
+    const candidate: ZippedUpdate = { version, url, kind }
+    if (kind === 'app') return candidate
     fullPackage = candidate
   }
-  return fullPackage
+  if (fullPackage) return fullPackage
+  throw new Error('最新版本没有找到 Windows 更新包')
+}
+
+async function findLatestUpdate(): Promise<ZippedUpdate | null> {
+  try {
+    const release = await requestJson(UPDATE_API)
+    const assets = Array.isArray(release.assets)
+      ? (release.assets as Array<Record<string, unknown>>)
+      : []
+    let fullPackage: ZippedUpdate | null = null
+    for (const asset of assets) {
+      const name = String(asset.name || '')
+      const match = name.match(/^Yinxu-(\d+\.\d+\.\d+)-(app|win)\.zip$/i)
+      if (!match) continue
+      const url = String(asset.browser_download_url || '')
+      if (!url) continue
+      const candidate: ZippedUpdate = {
+        version: match[1],
+        url,
+        kind: match[2].toLowerCase() === 'app' ? 'app' : 'win'
+      }
+      // app.zip 只包含 app.asar，体积约为完整包的四分之一，优先下载。
+      if (candidate.kind === 'app') return candidate
+      fullPackage = candidate
+    }
+    return fullPackage
+  } catch {
+    // GitHub API 有 60 次/小时限流，超限时从公开 Release 页面读取。
+    return findLatestUpdateFromHtml()
+  }
 }
 
 async function checkForUpdates(): Promise<{ ok: boolean }> {
