@@ -136,6 +136,11 @@ onMounted(async () => {
           <p>手机号验证码登录 · 登录后同步歌单</p>
         </header>
 
+        <p v-if="app.loginNotice" class="login-notice" role="alert">
+          <PhWarningCircle :size="15" />
+          <span>{{ app.loginNotice }}</span>
+        </p>
+
         <form class="login-form" @submit.prevent="submit">
           <div class="field">
             <label class="field-label" for="login-mobile">手机号</label>

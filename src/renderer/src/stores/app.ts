@@ -53,6 +53,7 @@ export const useAppStore = defineStore('app', () => {
   const playlistsLoading = ref(false)
   const playlistsError = ref('')
   const authExpired = ref(false)
+  const loginNotice = ref('')
   let playlistsEpoch = 0
 
   const displayName = computed(() => nickname.value || '音乐爱好者')
@@ -140,7 +141,10 @@ export const useAppStore = defineStore('app', () => {
   /** 登录成功后进入应用：刷新资料并加载歌单 */
   async function completeLogin(): Promise<void> {
     const ok = await refreshLogin()
-    if (ok) await loadPlaylists()
+    if (ok) {
+      loginNotice.value = ''
+      await loadPlaylists()
+    }
   }
 
   async function loadPlaylists(): Promise<void> {
@@ -161,14 +165,19 @@ export const useAppStore = defineStore('app', () => {
       if (epoch !== playlistsEpoch || !loggedIn.value) return
       playlists.value = []
       const message = e instanceof Error ? e.message : '歌单加载失败'
-      authExpired.value = /2001[078]|登录|未登录|token/i.test(message)
-      playlistsError.value = authExpired.value ? '登录状态已失效，请重新登录' : message
+      const expired = /2001[078]|登录|未登录|token/i.test(message)
+      if (expired) {
+        authExpired.value = true
+        await logout('登录已过期，请重新登录')
+        return
+      }
+      playlistsError.value = message
     } finally {
       if (epoch === playlistsEpoch) playlistsLoading.value = false
     }
   }
 
-  async function logout(): Promise<void> {
+  async function logout(notice = ''): Promise<void> {
     playlistsEpoch += 1
     clearAuthCookies()
     localStorage.removeItem(USER_CACHE_KEY)
@@ -178,6 +187,7 @@ export const useAppStore = defineStore('app', () => {
     playlistsError.value = ''
     playlistsLoading.value = false
     authExpired.value = false
+    loginNotice.value = notice
   }
 
   return {
@@ -193,6 +203,7 @@ export const useAppStore = defineStore('app', () => {
     playlistsLoading,
     playlistsError,
     authExpired,
+    loginNotice,
     bootstrap,
     retryBootstrap,
     refreshLogin,
